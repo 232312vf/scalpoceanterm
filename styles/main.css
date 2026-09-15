@@ -6,11 +6,13 @@
 /* =========================
    Base
 ========================= */
-html,body{width:100%;height:100%;font-family:Arial, sans-serif;background:#020407;color:#e7edf4}
+html,body{width:100%;min-height:100%;font-family:Arial, sans-serif;background:#020407;color:#e7edf4}
 html{-webkit-tap-highlight-color:transparent}
 button,a,input,[role="button"]{touch-action:manipulation}
 .app-wrapper{
     min-height:100vh;
+    min-height:100svh;
+    min-height:100dvh;
     position:relative;
     isolation:isolate;
     overflow:hidden;
@@ -18,13 +20,23 @@ button,a,input,[role="button"]{touch-action:manipulation}
         radial-gradient(circle at 50% 45%, rgba(25,42,58,.18), transparent 38%),
         #020407;
     padding:16px;
+    padding-top:max(16px, env(safe-area-inset-top));
+    padding-right:max(16px, env(safe-area-inset-right));
+    padding-bottom:max(16px, env(safe-area-inset-bottom));
+    padding-left:max(16px, env(safe-area-inset-left));
+}
+@media (max-width:700px){
+    .app-wrapper{
+        min-height:var(--viewport-height, 100dvh);
+    }
 }
 
 /* Straight animated grid background */
 .app-wrapper::before{
     content:"";
-    position:fixed;
-    inset:-35%;
+    position:absolute;
+    inset:0;
+    min-height:100%;
     z-index:0;
     pointer-events:none;
     opacity:.34;
@@ -43,8 +55,9 @@ button,a,input,[role="button"]{touch-action:manipulation}
 /* Soft atmospheric vignette */
 .app-wrapper::after{
     content:"";
-    position:fixed;
+    position:absolute;
     inset:0;
+    min-height:100%;
     z-index:1;
     pointer-events:none;
     background:
@@ -96,11 +109,12 @@ button,a,input,[role="button"]{touch-action:manipulation}
 ========================= */
 .glass-card{
     width:100%;max-width:420px;color:#fff;
-    backdrop-filter: none; /* Убираем эффект стекла */
-    background: #161d27;   /* Сплошной темный цвет, как у нижней карточки */
+    backdrop-filter:blur(18px);
+    -webkit-backdrop-filter:blur(18px);
+    background:linear-gradient(145deg,rgba(255,255,255,.09),rgba(255,255,255,.025) 48%,rgba(255,255,255,.015)),rgba(14,18,25,.78);
     border: 1px solid rgba(255,255,255,.12);
     border-radius: 16px;padding: 20px;display: flex;flex-direction: column;gap: 12px;
-    box-shadow: 0 8px 24px rgba(0,0,0,.3);
+    box-shadow:0 18px 48px rgba(0,0,0,.32),0 0 24px rgba(255,255,255,.045),inset 0 1px 0 rgba(255,255,255,.08);
     transition: opacity .25s ease, filter .25s ease;
 }
 .field-block{display:flex;flex-direction:column;gap:4px;cursor:pointer}
@@ -124,11 +138,12 @@ button,a,input,[role="button"]{touch-action:manipulation}
 ========================= */
 .glass-signal{
     width:100%;max-width:420px;color:#fff;position:relative;z-index:2;
-    backdrop-filter: none; /* Убираем размытие */
-    background: #161d27;   /* Устанавливаем сплошной темный цвет */
+    backdrop-filter:blur(18px);
+    -webkit-backdrop-filter:blur(18px);
+    background:linear-gradient(145deg,rgba(255,255,255,.09),rgba(255,255,255,.025) 48%,rgba(255,255,255,.015)),rgba(14,18,25,.78);
     border: 1px solid rgba(255,255,255,.1);
     border-radius: 16px;padding:16px;display:flex;flex-direction:column;gap:10px;
-    box-shadow:0 4px 12px rgba(0,0,0,.25);
+    box-shadow:0 18px 48px rgba(0,0,0,.32),0 0 24px rgba(255,255,255,.045),inset 0 1px 0 rgba(255,255,255,.08);
     transition:margin-top .28s ease, box-shadow .28s ease, transform .28s ease;
     will-change:margin-top,transform;
 }
@@ -160,11 +175,13 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 .faq-title{font-size:24px;font-weight:700;margin-bottom:16px;text-align:left}
 .faq-list{display:flex;flex-direction:column;gap:12px}
 .faq-item{
-    background: #161d27; /* Тот же сплошной цвет */
+    background:linear-gradient(145deg,rgba(255,255,255,.08),rgba(255,255,255,.02) 48%),rgba(14,18,25,.78);
     border: 1px solid rgba(255,255,255,.12);
-    backdrop-filter: none; /* Убираем прозрачность */
+    backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);
     border-radius: 12px;
     overflow: hidden;
+    box-shadow:0 14px 36px rgba(0,0,0,.28),0 0 20px rgba(255,255,255,.035);
     transition: .3s ease;
 }
 .faq-question{
@@ -466,7 +483,15 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 @media (max-width: 520px){
     html,body{min-width:320px;overflow-x:hidden}
     body{-webkit-text-size-adjust:100%;touch-action:pan-y;overflow-x:hidden}
-    .app-wrapper{min-height:100dvh;padding:12px;overflow:visible}
+    .app-wrapper{
+        min-height:100svh;
+        min-height:100dvh;
+        padding-top:max(12px, env(safe-area-inset-top));
+        padding-right:max(12px, env(safe-area-inset-right));
+        padding-bottom:max(12px, env(safe-area-inset-bottom));
+        padding-left:max(12px, env(safe-area-inset-left));
+        overflow:visible
+    }
     .terminal-brand{font-size:16px}
     .main{padding-left:0;padding-right:0}
     .terminal-layout{
@@ -476,58 +501,6 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
         gap:8px;
     }
 
-    /* Keep the mobile UI responsive on iOS Safari. Heavy filters and layered
-       shadows are decorative, so disable them on small screens. */
-    @media (max-width: 700px){
-        .app-wrapper::before{
-            filter:none;
-            animation:none;
-            opacity:.2;
-        }
-        .app-wrapper::after{
-            background:rgba(2,4,7,.16);
-        }
-        .glass-card,
-        .glass-signal,
-        .cp,
-        .ex,
-        .md,
-        .vip-sheet{
-            backdrop-filter:none;
-            -webkit-backdrop-filter:none;
-            box-shadow:0 4px 16px rgba(0,0,0,.26);
-        }
-        body.analysis-open .glass-card{
-            filter:none;
-        }
-        .chart-widget.signal-active>div:not(.signal-chart-overlay):not(.chart-api-overlay){
-            filter:none;
-            transform:none;
-        }
-        .signal-chart-overlay{
-            backdrop-filter:none;
-            -webkit-backdrop-filter:none;
-            background:rgba(7,10,15,.86);
-        }
-        .signal-chart-visual,
-        .signal-direction-visual{
-            filter:none;
-        }
-        .signal-chart-overlay.is-sell .signal-chart-visual{
-            filter:none;
-        }
-        .signal-chart-overlay.is-sell{
-            box-shadow:none;
-        }
-        .signal-chart-overlay.is-buy .signal-chart-visual,
-        .signal-chart-overlay.is-sell .signal-chart-visual{
-            animation:signalDirectionIn .45s ease both;
-        }
-        .vip-indicator{
-            animation:none;
-            box-shadow:none;
-        }
-    }
     .chart-panel{grid-column:1;height:280px;padding:8px}
     .terminal-sidebar{grid-column:1;grid-row:2}
     .terminal-sidebar .glass-card{padding:10px 8px}
@@ -908,10 +881,11 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 
 /* контейнер карточки — как раньше, но без лишнего свечения */
 .glass-signal{
-    background: #161d27; /* Сплошной цвет подложки */
-    backdrop-filter: none; /* Отключаем стекло */
+    background:linear-gradient(145deg,rgba(255,255,255,.09),rgba(255,255,255,.025) 48%,rgba(255,255,255,.015)),rgba(14,18,25,.78);
+    backdrop-filter:blur(18px);
+    -webkit-backdrop-filter:blur(18px);
     border: 1px solid var(--c-stroke);
-    box-shadow: 0 10px 32px rgba(0,0,0,.36);
+    box-shadow:0 18px 48px rgba(0,0,0,.32),0 0 24px rgba(255,255,255,.045),inset 0 1px 0 rgba(255,255,255,.08);
 }
 
 /* Лента направления — прежняя идея, но чуть компактнее и спокойнее */
@@ -1664,15 +1638,6 @@ body.signal-running .glass-signal{display:none}
 
 .vip-btn { position: relative; }
 
-/* убираем любые сторонние анимации с кнопки и её детей, кроме индикатора */
-.vip-btn,
-.vip-btn::before,
-.vip-btn::after,
-.vip-btn > *:not(.vip-indicator) {
-    animation: none !important;
-    transform: none !important;
-}
-
 /* красный кружок-индикатор */
 .vip-indicator{
     position: absolute;
@@ -1693,59 +1658,4 @@ body.signal-running .glass-signal{display:none}
     0%   { box-shadow: 0 0 0 0   rgba(255,77,79,.6); transform: scale(1); }
     70%  { box-shadow: 0 0 0 10px rgba(255,77,79,0); transform: scale(1.05); }
     100% { box-shadow: 0 0 0 0   rgba(255,77,79,0); transform: scale(1); }
-}
-
-@media (max-width:700px){
-    .app-wrapper::before,
-    .app-wrapper::after{
-        animation:none !important;
-        filter:none !important;
-    }
-    .app-wrapper::before{opacity:.16 !important}
-    .glass-card,
-    .glass-signal,
-    .chart-panel,
-    .terminal-controls,
-    .cp,
-    .ex,
-    .md,
-    .vip-sheet{
-        backdrop-filter:none !important;
-        -webkit-backdrop-filter:none !important;
-        box-shadow:0 3px 12px rgba(0,0,0,.22) !important;
-    }
-    .chart-widget.signal-active>div:not(.signal-chart-overlay):not(.chart-api-overlay){
-        filter:none !important;
-        transform:none !important;
-    }
-    .signal-chart-overlay,
-    .api-connection-overlay{
-        backdrop-filter:none !important;
-        -webkit-backdrop-filter:none !important;
-    }
-    .signal-chart-visual,
-    .signal-direction-visual,
-    .live-badge,
-    .vip-indicator{
-        filter:none !important;
-        animation:none !important;
-    }
-    .signal-chart-overlay .signal-chart-path,
-    .signal-direction-visual .signal-visual-line{
-        animation:none !important;
-        stroke-dashoffset:0 !important;
-    }
-    .inline-signal-status,
-    .inline-signal-time.is-counting{
-        animation:none !important;
-        text-shadow:none !important;
-    }
-    .press-feedback,
-    .chart-api-overlay-visible,
-    .chart-api-overlay-exiting,
-    .signal-chart-caption,
-    .signal-chart-direction,
-    .signal-chart-expiry{
-        animation:none !important;
-    }
 }
