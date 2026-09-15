@@ -78,6 +78,20 @@ let state = {
     model: null
 };
 
+function enterTelegramFullscreen() {
+    const telegramWebApp = window.Telegram?.WebApp;
+    if (!telegramWebApp) return;
+
+    telegramWebApp.expand?.();
+    const requestFullscreen = telegramWebApp.requestFullscreen;
+    if (typeof requestFullscreen !== "function") return;
+
+    Promise.resolve(requestFullscreen.call(telegramWebApp)).catch(() => {
+        // Older Telegram clients may reject fullscreen; expanded mode remains available.
+        telegramWebApp.expand?.();
+    });
+}
+
 // Модель по умолчанию (фиксированная)
 // Модель по умолчанию (фиксированная)
 const DEFAULT_MODEL = "NeuralEdge v2.0";
@@ -186,6 +200,7 @@ function restoreResult() {
 // Helpers (UI)
 // =============================
 function selectField(field) {
+    enterTelegramFullscreen();
     if (field === "pair")   { CurrencyPairPopup.open();   return; }
     if (field === "expiry") { CurrencyExpiryPopup.open(); return; }
     if (field === "model")  { /* модель фиксирована, поп-ап не нужен */ return; }
@@ -1756,8 +1771,8 @@ ensureDefaultModel();
     const cryptoAssets = ["BTC","ETH","SOL","BNB","XRP","ADA","DOGE","AVAX","LINK","DOT","LTC","TRX"]
         .map(asset => ({ id:`${asset}_USDT`, name:`${asset}/USDT` }));
 
-    function open(){ overlay.setAttribute("aria-hidden","false"); document.body.style.overflow="hidden"; render(); }
-    function close(){ overlay.setAttribute("aria-hidden","true"); document.body.style.overflow=""; }
+    function open(){ overlay.setAttribute("aria-hidden","false"); render(); }
+    function close(){ overlay.setAttribute("aria-hidden","true"); }
 
     function poolAll(){ return cryptoAssets; }
 
@@ -1832,35 +1847,9 @@ ensureDefaultModel();
         selectedId = current && PRESETS.some(p => p.label === current) ? current : null;
 
         overlay.setAttribute("aria-hidden","false");
-        document.body.style.overflow="hidden";
         render();
     }
-    function close(){ overlay.setAttribute("aria-hidden","true"); document.body.style.overflow=""; }
-
-    function restoreMobileLayout(){
-        document.body.style.overflow = "";
-        document.body.style.height = "";
-        document.documentElement.style.height = "";
-        document.documentElement.style.overflow = "";
-        document.documentElement.style.overflowX = "hidden";
-        const syncHeight = () => {
-            const viewport = window.visualViewport;
-            const height = viewport ? viewport.height : window.innerHeight;
-            document.documentElement.style.setProperty("--viewport-height", `${Math.round(height)}px`);
-        };
-        syncHeight();
-        window.requestAnimationFrame(() => {
-            window.requestAnimationFrame(() => {
-                syncHeight();
-                const container = document.getElementById("tv_chart_container");
-                const chart = container?._chart;
-                if (chart && container) {
-                    chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
-                }
-                window.dispatchEvent(new Event("resize"));
-            });
-        });
-    }
+    function close(){ overlay.setAttribute("aria-hidden","true"); }
 
     function render(){
         grid.innerHTML = PRESETS.map(p => `
@@ -1879,7 +1868,6 @@ ensureDefaultModel();
                 setExpiryUI(item);
                 close();
                 updateChart(state.pair || "BTC/USDT", item.label);
-                restoreMobileLayout();
             });
         });
     }
