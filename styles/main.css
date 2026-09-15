@@ -462,7 +462,9 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
     .terminal-sidebar{grid-column:1;grid-row:2}
 }
 @media (max-width: 520px){
-    .app-wrapper{padding:12px}
+    html,body{min-width:320px;overflow-x:hidden}
+    body{-webkit-text-size-adjust:100%;touch-action:pan-y}
+    .app-wrapper{min-height:100dvh;padding:12px;overflow:visible}
     .terminal-brand{font-size:16px}
     .main{padding-left:0;padding-right:0}
     .terminal-layout{
@@ -476,14 +478,22 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
     .terminal-sidebar .glass-card{padding:10px 8px}
     .panel-heading{padding:0 2px 8px}
     .panel-heading h2{font-size:16px}
-    .terminal-sidebar .field-block{gap:3px}
+    .terminal-sidebar .field-block{gap:3px;min-height:64px;padding:11px 12px;cursor:pointer;touch-action:manipulation}
     .terminal-sidebar .field-block label,
     .settings-label{font-size:11px}
-    .terminal-sidebar .field-block input{padding:8px 7px;font-size:11px}
-    .settings-heading{padding:8px 6px;font-size:11px;gap:5px}
+    .terminal-sidebar .field-block input{padding:8px 7px;font-size:12px;min-height:28px}
+    .settings-heading{min-height:60px;padding:10px 8px;font-size:12px;gap:5px;cursor:pointer;touch-action:manipulation}
     .settings-icon{font-size:13px}
     .settings-chevron{font-size:16px}
-    .submit-btn{padding:10px 5px;font-size:11px}
+    .submit-btn{min-height:48px;padding:12px 8px;font-size:12px;cursor:pointer;touch-action:manipulation}
+    .platform-connect-btn{min-height:44px;padding:0 12px;touch-action:manipulation}
+    .faq-question,.verification-link,.vip-btn,.cp-tab,.cp-fav,.cp-item,.ex-chip,.ex-close,.cp-close{
+        min-height:44px;
+        touch-action:manipulation;
+    }
+    .cp-overlay,.ex-overlay,.vip-overlay{padding:10px;align-items:flex-start;overflow:auto;-webkit-overflow-scrolling:touch}
+    .cp,.ex{margin:auto 0;max-height:calc(100dvh - 20px);overflow:auto}
+    .cp-list{max-height:45dvh}
 }
 
 /* =========================
