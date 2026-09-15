@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Scalp Terminal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles/main.css" />
+    <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<div class="app-wrapper">
+    <svg class="grid-wave-filter" aria-hidden="true" focusable="false">
+        <defs>
+            <filter id="gridWaveFilter" x="-10%" y="-10%" width="120%" height="120%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.008 0.018" numOctaves="2" seed="7" result="noise">
+                    <animate attributeName="baseFrequency" dur="28s" values="0.008 0.018;0.012 0.024;0.008 0.018" repeatCount="indefinite" />
+                </feTurbulence>
+                <feDisplacementMap in="SourceGraphic" in2="noise" scale="6" xChannelSelector="R" yChannelSelector="G" />
+            </filter>
+        </defs>
+    </svg>
+    <header class="header" aria-hidden="true"></header>
+
+    <main class="main">
+        <div class="main-heading">
+            <img id="terminalLogo" class="terminal-logo-hero" src="images/scalp-logo.png" alt="Scalp Terminal" />
+            <h1 id="terminalHeroTitle">Scalp Terminal</h1>
+            <p id="terminalHeroSub">Рабочий инструмент для анализа твоих LIVE-сделок</p>
+        </div>
+
+        <div class="terminal-layout">
+            <div class="chart-panel">
+                <div class="panel-heading">
+                    <div>
+                        <span class="panel-eyebrow" id="chartEyebrow">MARKET CHART</span>
+                        <h2>BTC/USDT</h2>
+                    </div>
+                    <span class="live-badge">LIVE</span>
+                </div>
+                <div class="chart-widget" id="tv_chart_container">
+                    <div class="chart-api-overlay" id="chartApiOverlay" hidden>
+                        <div class="chart-api-check" aria-hidden="true">
+                            <svg viewBox="0 0 30 24" focusable="false">
+                                <path d="M3 12.5 11 20 27 4" />
+                            </svg>
+                        </div>
+                        <div class="chart-api-title">ГРАФИК ПОДКЛЮЧЁН К API</div>
+                    </div>
+                    <div class="signal-chart-overlay" id="signalChartOverlay" hidden>
+                        <div class="signal-chart-visual" aria-hidden="true">
+                            <svg viewBox="0 0 240 130" focusable="false">
+                                <defs><marker id="chartSignalArrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0 0L6 3L0 6Z" fill="currentColor"/></marker></defs>
+                                <path class="signal-chart-bars" d="M35 112V86M72 112V68M109 112V80M146 112V48M183 112V30"/>
+                                <path class="signal-chart-path" id="signalChartPath" marker-end="url(#chartSignalArrow)" d="M16 92L52 70L82 84L118 50L150 60L220 20"/>
+                            </svg>
+                        </div>
+                        <div class="signal-chart-caption">СИГНАЛ ПОЛУЧЕН</div>
+                        <div class="signal-chart-direction" id="signalChartDirection">BUY</div>
+                        <div class="signal-chart-expiry" id="signalChartExpiry">Экспирация 1:00</div>
+                        <div class="signal-entry-line" id="signalEntryLine"><span id="signalEntryLabel">BUY • EXP 1:00</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="terminal-sidebar">
+                <div class="glass-card terminal-controls">
+                    <div class="controls-title" id="terminalSetupTitle">Настройка терминала</div>
+
+                    <div class="field-block" onclick="selectField('pair')">
+                        <label id="pairLabel">Валютная пара</label>
+                        <input type="text" id="pairField" value="BTC/USDT" placeholder="Выберите пару" readonly />
+                    </div>
+
+                    <div class="field-block" onclick="selectField('expiry')">
+                        <label id="expiryLabel">Время экспирации</label>
+                        <input type="text" id="timeField" placeholder="Выберите время" readonly />
+                    </div>
+
+                    <section class="terminal-settings">
+                        <button class="settings-heading" id="terminalSettingsToggle" type="button" aria-expanded="false" aria-controls="terminalSettingsContent" onclick="toggleTerminalSettings(this)">
+                            <span class="settings-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" focusable="false">
+                                    <path d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Zm0 2a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6Z"/>
+                                    <path d="m19.2 13.1 1.4 1.1-1.7 2.9-1.7-.7a7.2 7.2 0 0 1-1.4.8l-.3 1.8h-3.4l-.3-1.8a7.2 7.2 0 0 1-1.4-.8l-1.7.7-1.7-2.9 1.4-1.1a6.7 6.7 0 0 1 0-2.2L7 9.8l1.7-2.9 1.7.7a7.2 7.2 0 0 1 1.4-.8l.3-1.8h3.4l.3 1.8a7.2 7.2 0 0 1 1.4.8l1.7-.7 1.7 2.9-1.4 1.1a6.7 6.7 0 0 1 0 2.2Z"/>
+                                </svg>
+                            </span>
+                            <span class="settings-copy">
+                                <span class="settings-label" id="apiSetupTitle">Настройка API</span>
+                                <span class="settings-value" id="platformToggleTitle">Подключение к рабочей платформе по API</span>
+                            </span>
+                            <span class="settings-chevron" aria-hidden="true">⌄</span>
+                        </button>
+                        <div class="settings-block" id="terminalSettingsContent" hidden>
+                            <label id="platformUrlLabel" for="platformUrl">Введите API (URL сайта):</label>
+                            <div class="platform-connect-row">
+                                <input id="platformUrl" class="platform-input" type="url" placeholder="https://example.com" autocomplete="url" />
+                                <button id="platformConnectBtn" class="platform-connect-btn" type="button">Подключиться</button>
+                            </div>
+                            <p id="platformUrlStatus" class="platform-status" role="status"></p>
+                            <p class="settings-note" id="platformNote">После ввода вашего API бот автоматически подключится к рынку на вашей платформе и будет готов к работе</p>
+                            <div class="api-connection-overlay" id="apiConnectionOverlay" hidden>
+                                <span class="api-connection-pill"><span class="api-connection-dot"></span><span id="apiConnectionText">Получаем API-Ключ</span></span>
+                            </div>
+                        </div>
+                    </section>
+
+                <button class="submit-btn" id="getSignalBtn" disabled>Получить сигнал</button>
+                <div class="inline-signal-panel" id="inlineSignalPanel" hidden>
+                    <div class="inline-signal-status" id="inlineSignalStatus">ИЩЕМ ПОЗИЦИЮ</div>
+                    <div class="inline-signal-result" id="inlineSignalResult" hidden>
+                        <div class="signal-direction-visual" id="signalDirectionVisual" aria-label="Направление сигнала">
+                            <svg viewBox="0 0 220 140" focusable="false" aria-hidden="true">
+                                <defs><marker id="inlineSignalArrow" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="M0 0L5 2.5L0 5Z" fill="currentColor"/></marker></defs>
+                                <path class="signal-visual-bars" d="M35 118V92M70 118V72M105 118V82M140 118V48M175 118V30"/>
+                                <path class="signal-visual-line" marker-end="url(#inlineSignalArrow)" d="M20 100L55 80L82 94L112 58L142 66L198 24"/>
+                            </svg>
+                        </div>
+                        <div class="inline-signal-time" id="inlineSignalTime">1:00</div>
+                        <div class="inline-signal-issued" id="inlineSignalIssued">Сигнал выдан в 00:00</div>
+                        <div class="inline-signal-next">По окончанию данного сигнала можно получить новый</div>
+                    </div>
+                </div>
+                </div>
+                <section class="info-faq" aria-label="Информация о терминале">
+                <div class="info-faq-item">
+                    <button class="faq-question" type="button" onclick="toggleFAQ(this)" aria-expanded="false">
+                        <span>Какие технологии мы используем?</span>
+                        <span class="faq-chevron" aria-hidden="true">⌄</span>
+                    </button>
+                    <div class="faq-answer">
+                        Мы используем два мощных AI-инструмента — Claude Opus 5 и GPT-5.6 в связке с более чем 20 индикаторами и паттернами, которые анализируют график в реальном времени через API вашей платформы!
+                    </div>
+                </div>
+                <div class="info-faq-item">
+                    <button class="faq-question" type="button" onclick="toggleFAQ(this)" aria-expanded="false">
+                        <span>Как проверить не обман ли это?</span>
+                        <span class="faq-chevron" aria-hidden="true">⌄</span>
+                    </button>
+                    <div class="faq-answer">
+                        Специально для того чтобы нам доверяли на деле, а не на красивых словах, мы сделали проверку нашего инструмента в реальном времени на рабочей платформе С НАШИМ СТРАХОВЫМ ДЕПОЗИТОМ!<br><br>
+                        Для того чтобы убедиться что бот реально работает, а только потом начинать с нами работу - напиши нашему хелперу и он выделит ближайшее время для тебя и проведёт с тобой эту проверку в удобное для тебя время
+                        <a class="verification-link" href="https://t.me/m/-ioTgpBJMjVi" target="_blank" rel="noopener noreferrer">ЗАКАЗАТЬ ПРОВЕРКУ В РЕАЛЬНОМ ВРЕМЕНИ</a>
+                    </div>
+                </div>
+                </section>
+            </div>
+        </div>
+
+        <div class="glass-signal">
+            <div class="signal-top">
+                <div class="signal-title">
+                    <img src="images/signal-icon.svg" alt="Signal" />
+                    <span>Signal</span>
+                </div>
+                <div class="signal-model">
+                    Model: <span id="selectedModel">NeuralEdge v2.0</span>
+                </div>
+            </div>
+
+            <div class="signal-bottom">
+                <!-- Animated icon -->
+                <svg class="wave-loader" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2">
+                        <animate attributeName="stroke-dasharray" values="120;20;120" dur="1.5s" repeatCount="indefinite" />
+                        <animate attributeName="opacity" values="1;0.2;1" dur="1.5s" repeatCount="indefinite" />
+                    </path>
+                </svg>
+
+                <!-- Analysis screen -->
+                <div id="sigAnalysis" class="sig-analysis">
+                    <ul class="sig-steps" id="sigSteps">
+                        <li class="sig-step">
+              <span class="icon" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24 "><title>Text-link-analysis SVG Icon</title><path fill="#ffffff" d="M8 10h8v2H8zm0-4h12v2H8zm0-4h12v2H8z"/><path fill="#ffffff" d="m4.711 28l5.631-9.996l7.434 6.49a2 2 0 0 0 3.084-.534l6.97-10.403l-1.661-1.114l-7 10.448l-.07.103l-7.435-6.49a2.003 2.003 0 0 0-3.08.53L4 25.183V2H2v26a2.002 2.002 0 0 0 2 2h26v-2Z"/></svg>
+              </span>
+                            <div><b>Technical screening</b><div class="sub">Indicators, levels, volatility</div></div>
+                            <span class="check" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
+                        </li>
+
+                        <li class="sig-step">
+              <span class="icon" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><title>Pattern SVG Icon</title><path fill="#ffffff" d="M6 19.23q-.508 0-.87-.36q-.36-.362-.36-.87t.36-.87t.87-.36q.125 0 .221.018t.202.07l4.435-4.435q-.125-.333-.055-.682t.33-.608t.608-.33t.682.055l4.435-4.435l-.06-.202Q16.77 6.125 16.77 6q0-.508.362-.87q.361-.36.869-.36t.87.36t.36.87t-.36.87q-.362.36-.87.36q-.308 0-.423-.088l-4.435 4.43q.125.332.055.684t-.324.606q-.271.27-.62.34t-.682-.06l-4.325 4.32l.039.038h3.592q.16-.335.456-.533t.661-.198q.383 0 .692.195t.449.536h3.73q.16-.34.459-.536q.3-.195.676-.195q.508 0 .87.362q.36.361.36.869t-.36.87t-.87.36q-.377 0-.676-.197q-.299-.198-.459-.533h-3.73q-.14.34-.453.536q-.311.195-.682.195t-.667-.198t-.456-.533H7.123q-.14.335-.45.533T6 19.23m0-6q-.508 0-.87-.362q-.36-.361-.36-.869t.36-.87t.87-.36t.87.36q.36.362.36.87t-.36.87t-.87.36m0-6q-.508 0-.87-.36q-.36-.362-.36-.87t.36-.87t.87-.36t.87.36q.36.362.36.87t-.36.87t-.87.36m6 0q-.508 0-.87-.36q-.36-.362-.36-.87t.36-.87t.87-.36t.87.36q.36.362.36.87t-.36.87t-.87.36m6 6q-.508 0-.87-.36q-.36-.362-.36-.87t.36-.87t.87-.36t.87.36q.36.362.36.87t-.36.87t-.87.36"/></svg>
+              </span>
+                            <div><b>Pattern recognition</b><div class="sub">Trends, figures, candle models</div></div>
+                            <span class="check" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
+                        </li>
+
+                        <li class="sig-step">
+              <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M4 7h8M8 3v8M14 14l6 6M20 14l-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              </span>
+                            <div><b>Mathematical modeling</b><div class="sub">Probabilities & risk management</div></div>
+                            <span class="check" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
+                        </li>
+
+                        <li class="sig-step">
+              <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M3 12h6l3-5 3 10 3-5h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              </span>
+                            <div><b>Signal generation</b><div class="sub">Aggregation & normalization</div></div>
+                            <span class="check" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
+                        </li>
+
+                        <li class="sig-step">
+              <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 2l3 7h7l-5.5 4 2.5 7-7-4-7 4 2.5-7L2 9h7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              </span>
+                            <div><b>Cross-validation</b><div class="sub">Consistency & error control</div></div>
+                            <span class="check" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
+                        </li>
+                    </ul>
+
+                    <div class="sig-progress">
+                        <div class="bar" id="sigProgress" style="width:0%"></div>
+                    </div>
+                </div>
+
+                <div id="sigResult" class="rg2" hidden>
+
+                    <div id="sigDirIcon" class="sig-dir-icon" aria-hidden="true"></div>
+                    <!-- Direction ribbon -->
+                    <div class="rg2-ribbon" id="sigDirection">BUY</div>
+
+                    <!-- Pair centered -->
+                    <div class="rg2-pair" id="sigPair">—</div>
+
+                    <!-- Two big counters -->
+                    <div class="rg2-counters">
+                        <div class="rg2-counter">
+                            <div class="k">CONFIDENCE</div>
+                            <div class="v" id="sigConf">—</div>
+                        </div>
+                        <div class="rg2-counter">
+                            <div class="k">ACCURACY</div>
+                            <div class="v" id="sigAcc">—</div>
+                        </div>
+                    </div>
+
+                    <!-- Rows -->
+                    <div class="rg2-list">
+                        <div class="row">
+                            <div class="k">MARKET</div>
+                            <div class="v" id="sigMarket">—</div>
+                        </div>
+                        <div class="row">
+                            <div class="k">STRENGTH</div>
+                            <div class="v" id="sigStrength">—</div>
+                        </div>
+                        <div class="row">
+                            <div class="k">VOLUME</div>
+                            <div class="v" id="sigVol">—</div>
+                        </div>
+                        <div class="row">
+                            <div class="k">TIME</div>
+                            <div class="v" id="sigTime">—</div>
+                        </div>
+                        <div class="row">
+                            <div class="k">VALID UNTIL</div>
+                            <div class="v" id="sigValid">—</div>
+                        </div>
+                    </div>
+
+                    <div class="rg2-actions">
+                        <button class="rg2-btn" id="sigRepeat">Repeat</button>
+                        <button class="rg2-btn ghost" id="sigReset">Reset</button>
+                    </div>
+                </div>
+
+
+            </div>
+        </div>
+    </main>
+
+    <section class="faq-section legacy-faq">
+        <h2 class="faq-title">FAQ</h2>
+        <div class="faq-list">
+
+            <div class="faq-item">
+                <button class="faq-question" onclick="toggleFAQ(this)">
+                    <span>What is an AI signal?</span>
+                    <img src="images/ArrowDownAlt2.svg" class="arrow-icon" alt="Arrow" />
+                </button>
+                <div class="faq-answer">
+                    An AI signal is generated by artificial intelligence based on market analysis.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question" onclick="toggleFAQ(this)">
+                    <span>Why VIP status?</span>
+                    <img src="images/ArrowDownAlt2.svg" class="arrow-icon" alt="Arrow" />
+                </button>
+                <div class="faq-answer">
+                    VIP speeds up analysis, improves signal quality, and unlocks extra tools.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question" onclick="toggleFAQ(this)">
+                    <span>What is expiry time?</span>
+                    <img src="images/ArrowDownAlt2.svg" class="arrow-icon" alt="Arrow" />
+                </button>
+                <div class="faq-answer">
+                    The moment when a trade closes automatically. Choose what fits your strategy.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question" onclick="toggleFAQ(this)">
+                    <span>How do models differ?</span>
+                    <img src="images/ArrowDownAlt2.svg" class="arrow-icon" alt="Arrow" />
+                </button>
+                <div class="faq-answer">
+                    Models differ in performance and compute — expect different signals.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question" onclick="toggleFAQ(this)">
+                    <span>Are signals accurate?</span>
+                    <img src="images/ArrowDownAlt2.svg" class="arrow-icon" alt="Arrow" />
+                </button>
+                <div class="faq-answer">
+                    Signals are aggregated across many markets and venues to increase robustness.
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+</div>
+
+<div class="ui-toast" id="uiToast" role="status" aria-live="polite"></div>
+
+<!-- POPUP: pair -->
+<div class="cp-overlay" id="cpPopup" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="cp" role="document">
+        <div class="cp-header">
+            <div class="cp-title-main">ВЫБОР АКТИВА</div>
+            <div class="cp-search-row">
+                <div class="cp-search">
+                    <img class="cp-icon-left" src="images/icons/SearchOutlined.svg" width="18" height="18" alt="Search" />
+                    <input id="cpSearch" type="search" autocomplete="off" placeholder="Поиск" />
+                    <button class="cp-search-clear" id="cpSearchClear" type="button" aria-label="Очистить поиск">×</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="cp-list" id="cpList"></div>
+    </div>
+</div>
+<!-- /POPUP -->
+
+<!-- POPUP: expiry -->
+<div class="ex-overlay" id="exPopup" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="ex" role="document">
+        <div class="ex-header">
+            <div class="ex-title">ВЫБОР ВРЕМЕНИ</div>
+        </div>
+        <div class="ex-grid" id="exGrid"><!-- render from JS --></div>
+    </div>
+</div>
+<!-- /POPUP -->
+
+<!-- POPUP: model -->
+<div class="md-overlay" id="mdPopup" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="md" role="document">
+        <div class="md-header">
+            <div class="md-title">AI model</div>
+        </div>
+        <div class="md-grid" id="mdGrid"><!-- render from JS --></div>
+    </div>
+</div>
+<!-- /POPUP -->
+
+<!-- POPUP: VIP Bottom Sheet -->
+<div class="vip-overlay" id="vipSheet" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="vip-backdrop" data-close></div>
+
+    <section class="vip-sheet" role="document" aria-labelledby="vipTitle">
+        <div class="vip-grabber" data-close="drag" aria-hidden="true"></div>
+
+        <header class="vip-head">
+            <div class="vip-title-wrap">
+                <h3 id="vipTitle">Get VIP access</h3>
+            </div>
+            <button class="vip-close" id="vipClose" aria-label="Close">
+                <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#9aa7b8" d="M18.3 5.7L12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7 4.3 4.3 10.6 10.6 16.9 4.3z"/></svg>
+            </button>
+        </header>
+
+        <div class="vip-body">
+            <!-- Hero -->
+            <div class="vip-hero">
+                <div class="vip-badge">Exclusive access</div>
+                <h4>More accuracy. More markets. Less risk.</h4>
+                <p class="vip-sub">VIP unlocks advanced model, priority signals and risk tools.</p>
+            </div>
+
+            <!-- Short comparison -->
+            <div class="vip-compare">
+                <div class="vip-card free">
+                    <div class="vip-card-title">Basic</div>
+                    <ul>
+                        <li>NeuralEdge v2.0</li>
+                        <li>Average signal accuracy</li>
+                        <li>Standard markets</li>
+                        <li>Limited signal history</li>
+                        <li>Market analysis every 40s</li>
+                        <li>Payouts up to 80%</li>
+                    </ul>
+                </div>
+
+                <div class="vip-card vip">
+                    <div class="vip-card-title">VIP</div>
+                    <ul>
+                        <li>NeuralEdge v2.0</li>
+                        <li>Timeframes up to <b>H4</b></li>
+                        <li>Extended markets: stocks/crypto/indices</li>
+                        <li>Priority signals & early access</li>
+                        <li>Details: strength/volume/probability corridors</li>
+                        <li>Deep history & favorites</li>
+                        <li>Market analysis every 1.2s</li>
+                        <li>Payouts up to 170%</li>
+                    </ul>
+                </div>
+            </div>
+
+            <h3 class="vip-h3">What VIP gives</h3>
+            <!-- Features -->
+            <div class="vip-features">
+                <div class="vip-feature">
+                    <img class="vip-icon" src="images/vip/Chart_perspective_matte_s%201.svg" alt="Chart">
+                    <div class="vf-text">
+                        <div class="vf-title">+ up to 12% ↑ accuracy</div>
+                        <div class="vf-sub">via ensembles & probability calibration.</div>
+                    </div>
+                </div>
+
+                <div class="vip-feature">
+                    <img class="vip-icon" src="images/vip/Flash_perspective_matte_s.svg" alt="Flash">
+                    <div class="vf-text">
+                        <div class="vf-title">Priority delivery</div>
+                        <div class="vf-sub">VIP gets the signal first.</div>
+                    </div>
+                </div>
+
+                <div class="vip-feature">
+                    <img class="vip-icon" src="images/vip/Briefcase_perspective_matte_s%201.svg" alt="Briefcase">
+                    <div class="vf-text">
+                        <div class="vf-title">Risk guides</div>
+                        <div class="vf-sub">adaptive lot/expiry vs volatility.</div>
+                    </div>
+                </div>
+
+                <div class="vip-feature">
+                    <img class="vip-icon" src="images/vip/Diagram_perspective_matte_s%201.svg" alt="Diagram">
+                    <div class="vf-text">
+                        <div class="vf-title">Extended markets</div>
+                        <div class="vf-sub">packages for stocks, indices, crypto.</div>
+                    </div>
+                </div>
+            </div>
+            <section class="vip-how">
+                <h4>How to get VIP</h4>
+                <p class="vip-how-text">
+                    Keep trading on PocketOption. VIP is granted automatically based on your turnover.
+                </p>
+            </section>
+    </section>
+</div>
+
+<script src="scripts/main.js"></script>
+</body>
+</html>
