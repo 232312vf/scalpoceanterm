@@ -2,6 +2,8 @@
 // VIP Indicator & Bottom Sheet
 // =============================
 document.addEventListener("DOMContentLoaded", () => {
+    document.body.style.overflow = "";
+    document.documentElement.style.overflowX = "hidden";
     const vipBtn = document.getElementById("vipBtn");
     const vipIndicator = document.getElementById("vipIndicator");
     const sheet = document.getElementById("vipSheet");
