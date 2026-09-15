@@ -572,6 +572,24 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
     .terminal-sidebar .glass-card{
         width:100%;
     }
+
+    .cp-overlay,.ex-overlay{
+        position:fixed;
+        inset:0;
+        height:100%;
+        min-height:100dvh;
+        overflow:hidden;
+        overscroll-behavior:contain;
+    }
+
+    .cp,.ex{
+        max-height:calc(100dvh - 20px);
+        overflow:hidden;
+    }
+
+    .cp-search input{
+        font-size:16px;
+    }
 }
 
 /* Restore the non-chart motion language without affecting chart rendering. */
