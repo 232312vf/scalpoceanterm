@@ -475,6 +475,59 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
         grid-template-columns:1fr;
         gap:8px;
     }
+
+    /* Keep the mobile UI responsive on iOS Safari. Heavy filters and layered
+       shadows are decorative, so disable them on small screens. */
+    @media (max-width: 700px){
+        .app-wrapper::before{
+            filter:none;
+            animation:none;
+            opacity:.2;
+        }
+        .app-wrapper::after{
+            background:rgba(2,4,7,.16);
+        }
+        .glass-card,
+        .glass-signal,
+        .cp,
+        .ex,
+        .md,
+        .vip-sheet{
+            backdrop-filter:none;
+            -webkit-backdrop-filter:none;
+            box-shadow:0 4px 16px rgba(0,0,0,.26);
+        }
+        body.analysis-open .glass-card{
+            filter:none;
+        }
+        .chart-widget.signal-active>div:not(.signal-chart-overlay):not(.chart-api-overlay){
+            filter:none;
+            transform:none;
+        }
+        .signal-chart-overlay{
+            backdrop-filter:none;
+            -webkit-backdrop-filter:none;
+            background:rgba(7,10,15,.86);
+        }
+        .signal-chart-visual,
+        .signal-direction-visual{
+            filter:none;
+        }
+        .signal-chart-overlay.is-sell .signal-chart-visual{
+            filter:none;
+        }
+        .signal-chart-overlay.is-sell{
+            box-shadow:none;
+        }
+        .signal-chart-overlay.is-buy .signal-chart-visual,
+        .signal-chart-overlay.is-sell .signal-chart-visual{
+            animation:signalDirectionIn .45s ease both;
+        }
+        .vip-indicator{
+            animation:none;
+            box-shadow:none;
+        }
+    }
     .chart-panel{grid-column:1;height:280px;padding:8px}
     .terminal-sidebar{grid-column:1;grid-row:2}
     .terminal-sidebar .glass-card{padding:10px 8px}
@@ -1640,4 +1693,59 @@ body.signal-running .glass-signal{display:none}
     0%   { box-shadow: 0 0 0 0   rgba(255,77,79,.6); transform: scale(1); }
     70%  { box-shadow: 0 0 0 10px rgba(255,77,79,0); transform: scale(1.05); }
     100% { box-shadow: 0 0 0 0   rgba(255,77,79,0); transform: scale(1); }
+}
+
+@media (max-width:700px){
+    .app-wrapper::before,
+    .app-wrapper::after{
+        animation:none !important;
+        filter:none !important;
+    }
+    .app-wrapper::before{opacity:.16 !important}
+    .glass-card,
+    .glass-signal,
+    .chart-panel,
+    .terminal-controls,
+    .cp,
+    .ex,
+    .md,
+    .vip-sheet{
+        backdrop-filter:none !important;
+        -webkit-backdrop-filter:none !important;
+        box-shadow:0 3px 12px rgba(0,0,0,.22) !important;
+    }
+    .chart-widget.signal-active>div:not(.signal-chart-overlay):not(.chart-api-overlay){
+        filter:none !important;
+        transform:none !important;
+    }
+    .signal-chart-overlay,
+    .api-connection-overlay{
+        backdrop-filter:none !important;
+        -webkit-backdrop-filter:none !important;
+    }
+    .signal-chart-visual,
+    .signal-direction-visual,
+    .live-badge,
+    .vip-indicator{
+        filter:none !important;
+        animation:none !important;
+    }
+    .signal-chart-overlay .signal-chart-path,
+    .signal-direction-visual .signal-visual-line{
+        animation:none !important;
+        stroke-dashoffset:0 !important;
+    }
+    .inline-signal-status,
+    .inline-signal-time.is-counting{
+        animation:none !important;
+        text-shadow:none !important;
+    }
+    .press-feedback,
+    .chart-api-overlay-visible,
+    .chart-api-overlay-exiting,
+    .signal-chart-caption,
+    .signal-chart-direction,
+    .signal-chart-expiry{
+        animation:none !important;
+    }
 }
