@@ -260,6 +260,7 @@ function toggleTerminalSettings(button) {
 function updateChart(symbol, timeframe, forceReload = false) {
     const container = document.getElementById("tv_chart_container");
     if (!container || !window.LightweightCharts) return;
+    const mobilePerformance = window.matchMedia("(max-width: 700px)").matches;
 
     const intervalMap = {
         S1: "1", S30: "1",
@@ -337,7 +338,8 @@ function updateChart(symbol, timeframe, forceReload = false) {
         window.repositionSignalEntryLine?.();
     });
 
-    fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${chartInterval}&limit=300`)
+    const candleLimit = mobilePerformance ? 120 : 300;
+    fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${chartInterval}&limit=${candleLimit}`)
         .then((response) => {
             if (!response.ok) throw new Error(`Binance request failed: ${response.status}`);
             return response.json();
@@ -374,6 +376,9 @@ function updateChart(symbol, timeframe, forceReload = false) {
     const socket = new WebSocket(`wss://stream.binance.com:9443/ws/${binanceSymbol.toLowerCase()}@kline_${chartInterval}`);
     socket.addEventListener("message", (event) => {
         if (container._chartKey !== chartKey) return;
+        const now = performance.now();
+        if (mobilePerformance && now - (container._lastLiveRender || 0) < 300) return;
+        container._lastLiveRender = now;
         const payload = JSON.parse(event.data);
         const kline = payload.k;
         if (!kline) return;
@@ -415,11 +420,16 @@ function updateChart(symbol, timeframe, forceReload = false) {
     });
     container._chartSocket = socket;
 
+    let resizeFrame = null;
     const resize = () => {
-        if (container._chart === chart) {
-            chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
-            window.repositionSignalEntryLine?.();
-        }
+        if (resizeFrame !== null) return;
+        resizeFrame = requestAnimationFrame(() => {
+            resizeFrame = null;
+            if (container._chart === chart) {
+                chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+                window.repositionSignalEntryLine?.();
+            }
+        });
     };
     const observer = new ResizeObserver(resize);
     observer.observe(container);
@@ -1970,6 +1980,10 @@ ensureDefaultModel();
     const chartPath = q("signalChartPath");
     const chartWidget = q("tv_chart_container");
     let countdownTimer = null;
+    let countdownFrame = null;
+    let countdownDeadline = 0;
+    let countdownLastRemaining = -1;
+    let countdownRender = null;
     let signalEntryPrice = null;
     let signalEntrySyncTimer = null;
     let signalTimers = [];
@@ -1990,7 +2004,11 @@ ensureDefaultModel();
 
         signalTimers.forEach(clearTimeout);
         signalTimers = [];
-        clearInterval(countdownTimer);
+        clearTimeout(countdownTimer);
+        cancelAnimationFrame(countdownFrame);
+        countdownTimer = null;
+        countdownFrame = null;
+        countdownRender = null;
         controls?.classList.add("signal-mode");
         document.body.classList.add("signal-running");
         if (inlinePanel) {
@@ -2075,7 +2093,7 @@ ensureDefaultModel();
         }]);
         positionEntryLine();
         clearInterval(signalEntrySyncTimer);
-        signalEntrySyncTimer = setInterval(positionEntryLine, 100);
+        signalEntrySyncTimer = setInterval(positionEntryLine, 300);
     }
 
     function positionEntryLine(){
@@ -2091,24 +2109,45 @@ ensureDefaultModel();
     window.repositionSignalEntryLine = positionEntryLine;
 
     function startCountdown(seconds){
-        const deadline = Date.now() + (seconds * 1000);
+        clearTimeout(countdownTimer);
+        cancelAnimationFrame(countdownFrame);
+        countdownDeadline = Date.now() + (seconds * 1000);
+        countdownLastRemaining = -1;
         inlineTime?.classList.add("is-counting");
-        const tick = () => {
-            const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-            if (inlineTime) inlineTime.textContent = formatDuration(remaining);
-            if (signalEntryLabel) {
-                const direction = chartDirection?.textContent || "SIGNAL";
-                signalEntryLabel.textContent = `${direction} • EXP ${formatDuration(remaining)}`;
+        const render = () => {
+            const remaining = Math.max(0, Math.ceil((countdownDeadline - Date.now()) / 1000));
+            if (remaining !== countdownLastRemaining) {
+                countdownLastRemaining = remaining;
+                if (inlineTime) inlineTime.textContent = formatDuration(remaining);
+                if (signalEntryLabel) {
+                    const direction = chartDirection?.textContent || "SIGNAL";
+                    signalEntryLabel.textContent = `${direction} • EXP ${formatDuration(remaining)}`;
+                }
             }
             if (remaining <= 0) {
-                clearInterval(countdownTimer);
+                countdownFrame = null;
+                countdownTimer = null;
                 inlineTime?.classList.remove("is-counting");
                 resetAll();
+                return;
             }
+            countdownFrame = requestAnimationFrame(render);
         };
-        tick();
-        countdownTimer = setInterval(tick, 1000);
+        countdownRender = render;
+        render();
+        countdownTimer = window.setTimeout(() => {
+            countdownTimer = null;
+            countdownFrame = requestAnimationFrame(render);
+        }, 1000);
     }
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && countdownDeadline > Date.now()) {
+            countdownLastRemaining = -1;
+            cancelAnimationFrame(countdownFrame);
+            countdownFrame = requestAnimationFrame(() => countdownRender?.());
+        }
+    });
 
     function getSignalDecision(){
         const data = document.getElementById("tv_chart_container")?._candleData || [];
@@ -2373,8 +2412,13 @@ ensureDefaultModel();
         const preserveSettings = controls?.classList.contains("signal-mode");
         signalTimers.forEach(clearTimeout);
         signalTimers = [];
-        clearInterval(countdownTimer);
+        clearTimeout(countdownTimer);
+        cancelAnimationFrame(countdownFrame);
         countdownTimer = null;
+        countdownFrame = null;
+        countdownDeadline = 0;
+        countdownLastRemaining = -1;
+        countdownRender = null;
         clearInterval(signalEntrySyncTimer);
         signalEntrySyncTimer = null;
         signalEntryPrice = null;
