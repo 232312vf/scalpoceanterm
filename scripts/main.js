@@ -4,6 +4,14 @@
 document.addEventListener("DOMContentLoaded", () => {
     document.body.style.overflow = "";
     document.documentElement.style.overflowX = "hidden";
+    const syncViewportHeight = () => {
+        const viewport = window.visualViewport;
+        const height = viewport ? viewport.height : window.innerHeight;
+        document.documentElement.style.setProperty("--viewport-height", `${Math.round(height)}px`);
+    };
+    syncViewportHeight();
+    window.addEventListener("resize", syncViewportHeight, { passive: true });
+    window.visualViewport?.addEventListener("resize", syncViewportHeight, { passive: true });
     const vipBtn = document.getElementById("vipBtn");
     const vipIndicator = document.getElementById("vipIndicator");
     const sheet = document.getElementById("vipSheet");
@@ -1743,6 +1751,7 @@ ensureDefaultModel();
 
     function open(){ overlay.setAttribute("aria-hidden","false"); document.body.style.overflow="hidden"; render(); }
     function close(){ overlay.setAttribute("aria-hidden","true"); document.body.style.overflow=""; }
+
     function poolAll(){ return cryptoAssets; }
 
     function render(){
@@ -1821,6 +1830,31 @@ ensureDefaultModel();
     }
     function close(){ overlay.setAttribute("aria-hidden","true"); document.body.style.overflow=""; }
 
+    function restoreMobileLayout(){
+        document.body.style.overflow = "";
+        document.body.style.height = "";
+        document.documentElement.style.height = "";
+        document.documentElement.style.overflow = "";
+        document.documentElement.style.overflowX = "hidden";
+        const syncHeight = () => {
+            const viewport = window.visualViewport;
+            const height = viewport ? viewport.height : window.innerHeight;
+            document.documentElement.style.setProperty("--viewport-height", `${Math.round(height)}px`);
+        };
+        syncHeight();
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+                syncHeight();
+                const container = document.getElementById("tv_chart_container");
+                const chart = container?._chart;
+                if (chart && container) {
+                    chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+                }
+                window.dispatchEvent(new Event("resize"));
+            });
+        });
+    }
+
     function render(){
         grid.innerHTML = PRESETS.map(p => `
       <button class="ex-chip timeframe-btn" data-id="${p.id}" data-tf="${p.label}" aria-selected="${p.label===selectedId}">
@@ -1838,6 +1872,7 @@ ensureDefaultModel();
                 setExpiryUI(item);
                 close();
                 updateChart(state.pair || "BTC/USDT", item.label);
+                restoreMobileLayout();
             });
         });
     }
