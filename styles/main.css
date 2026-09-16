@@ -1012,6 +1012,11 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
     background:#f3382c;
     border-color:rgba(255,139,139,.42);
 }
+.rg2-ribbon:not(.buy):not(.sell){
+    background:rgba(255,184,77,.16);
+    border-color:rgba(255,184,77,.55);
+    color:#ffd78a;
+}
 
 /* Пара — крупно по центру */
 .rg2-pair{
@@ -1024,7 +1029,7 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 
 /* Два счётчика */
 .rg2-counters{
-    display:grid; grid-template-columns:repeat(2,1fr); gap:10px;
+    display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px;
     margin-bottom:10px;
 }
 .rg2-counter{
@@ -1036,8 +1041,9 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
     text-align:center;
     box-shadow:0 8px 20px rgba(0,0,0,.20);
 }
-.rg2-counter .k{ color:var(--c-muted); font-size:12px; letter-spacing:.04em; }
-.rg2-counter .v{ color:var(--c-text); font-weight:700; font-size:24px; }
+.rg2-counter .k{ color:var(--c-muted); font-size:11px; letter-spacing:.04em; }
+.rg2-counter .v{ color:var(--c-text); font-weight:700; font-size:22px; }
+.rg2-list #sigReason{max-width:62%;white-space:normal;line-height:1.25;}
 
 /* Список-таблица */
 .rg2-list{ display:flex; flex-direction:column; gap:8px; }
