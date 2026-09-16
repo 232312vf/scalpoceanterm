@@ -1,4 +1,56 @@
 // =============================
+// Mobile viewport + iOS keyboard controller
+// =============================
+const mobileViewportController = (() => {
+    const root = document.documentElement;
+    const visualViewport = window.visualViewport;
+    let savedScrollY = 0;
+    let keyboardOpen = false;
+    let restoreTimer = 0;
+
+    const viewportHeight = () => Math.round(visualViewport?.height || window.innerHeight);
+
+    const detectKeyboard = () => {
+        if (!visualViewport) return false;
+        const heightDelta = window.innerHeight - visualViewport.height;
+        return heightDelta > Math.max(120, window.innerHeight * 0.2);
+    };
+
+    const sync = () => {
+        root.style.setProperty("--visual-viewport-height", `${viewportHeight()}px`);
+        const nextKeyboardOpen = detectKeyboard();
+        if (keyboardOpen && !nextKeyboardOpen) restoreAfterBlur();
+        keyboardOpen = nextKeyboardOpen;
+    };
+
+    const rememberScroll = () => {
+        savedScrollY = window.scrollY;
+    };
+
+    const restoreAfterBlur = () => {
+        window.clearTimeout(restoreTimer);
+        restoreTimer = window.setTimeout(() => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    sync();
+                    window.scrollTo({ top: savedScrollY, left: 0, behavior: "auto" });
+                });
+            });
+        }, 120);
+    };
+
+    const init = (telegramWebApp) => {
+        sync();
+        window.addEventListener("resize", sync, { passive: true });
+        visualViewport?.addEventListener("resize", sync, { passive: true });
+        visualViewport?.addEventListener("scroll", sync, { passive: true });
+        telegramWebApp?.onEvent?.("viewportChanged", sync);
+    };
+
+    return { init, sync, rememberScroll, restoreAfterBlur };
+})();
+
+// =============================
 // VIP Indicator & Bottom Sheet
 // =============================
 document.addEventListener("DOMContentLoaded", () => {
@@ -8,17 +60,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!telegramWebApp.isExpanded) telegramWebApp.expand();
     }
 
-    document.body.style.overflow = "";
     document.documentElement.style.overflowX = "hidden";
-    const syncViewportHeight = () => {
-        const viewport = window.visualViewport;
-        const height = viewport ? viewport.height : window.innerHeight;
-        document.documentElement.style.setProperty("--visual-viewport-height", `${Math.round(height)}px`);
-    };
-    syncViewportHeight();
-    window.addEventListener("resize", syncViewportHeight, { passive: true });
-    window.visualViewport?.addEventListener("resize", syncViewportHeight, { passive: true });
-    telegramWebApp?.onEvent?.("viewportChanged", syncViewportHeight);
+    mobileViewportController.init(telegramWebApp);
     const vipBtn = document.getElementById("vipBtn");
     const vipIndicator = document.getElementById("vipIndicator");
     const sheet = document.getElementById("vipSheet");
@@ -29,11 +72,10 @@ document.addEventListener("DOMContentLoaded", () => {
     function openVip(){
         if (vipIndicator) { vipIndicator.style.display = "none"; localStorage.setItem("vipViewed","true"); }
         sheet?.setAttribute("aria-hidden","false");
-        document.body.style.overflow = "hidden";
     }
     function closeVip(){
         sheet?.setAttribute("aria-hidden","true");
-        document.body.style.overflow = "";
+        mobileViewportController.restoreAfterBlur();
     }
 
 
@@ -268,7 +310,7 @@ function restoreResult() {
         const raw = localStorage.getItem(RESULT_KEY);
         if (!raw) return;
         const r = JSON.parse(raw);
-        if (r.schemaVersion !== 2 || !["BUY", "SELL", "NO_TRADE"].includes(r.status)) {
+        if (r.schemaVersion !== 2 || !["BUY", "SELL"].includes(r.status)) {
             localStorage.removeItem(RESULT_KEY);
             return;
         }
@@ -393,11 +435,24 @@ function toggleFAQ(button) {
 
 function toggleTerminalSettings(button) {
     const content = document.getElementById("terminalSettingsContent");
+    const input = document.getElementById("platformUrl");
     if (!content) return;
 
     const isOpen = button.getAttribute("aria-expanded") === "true";
-    button.setAttribute("aria-expanded", String(!isOpen));
-    content.hidden = isOpen;
+    const nextOpen = !isOpen;
+
+    if (nextOpen) {
+        mobileViewportController.rememberScroll();
+    }
+
+    button.setAttribute("aria-expanded", String(nextOpen));
+    content.hidden = !nextOpen;
+    content.setAttribute("aria-hidden", String(!nextOpen));
+
+    if (!nextOpen) {
+        if (document.activeElement === input) input.blur();
+        mobileViewportController.restoreAfterBlur();
+    }
 }
 
 function updateChart(symbol, timeframe, forceReload = false) {
@@ -2125,10 +2180,12 @@ ensureDefaultModel();
         selectedId = current && MODELS.some(m => m.label === current) ? current : null;
 
         overlay.setAttribute("aria-hidden","false");
-        document.body.style.overflow="hidden";
         render();
     }
-    function close(){ overlay.setAttribute("aria-hidden","true"); document.body.style.overflow=""; }
+    function close(){
+        overlay.setAttribute("aria-hidden","true");
+        mobileViewportController.restoreAfterBlur();
+    }
 
     function render(){
         grid.innerHTML = MODELS.map(m => `
@@ -2641,10 +2698,7 @@ ensureDefaultModel();
         const score = rangeMarket && !breakoutUp && !breakoutDown ? rangeScore : trendScore;
         const regime = unsafe ? "UNSAFE" : rangeMarket && !breakoutUp && !breakoutDown ? "RANGE" : "TREND";
         const conflict = Math.abs(trendScore) < 1.2 && Math.abs(rangeScore) < 1.5;
-        const boundaryBlock = rangeMarket && !breakoutUp && !breakoutDown
-            && !(nearSupport && rejectedSupport) && !(nearResistance && rejectedResistance);
-        const exhaustionBlock = nearResistance && !breakoutUp && score > 0
-            || nearSupport && !breakoutDown && score < 0;
+        const rangeSetup = rangeMarket && !breakoutUp && !breakoutDown;
         const rawPBuy = sigmoidSignal(score / 2.6);
         const penalty = (unsafe ? 0.12 : 0)
             + (volumeRatio < 0.7 ? 0.06 : 0)
@@ -2656,31 +2710,40 @@ ensureDefaultModel();
         const probability = Math.max(pBuy, pSell);
         const totalSignalWeight = 13.2;
         const confidence = clampSignal(Math.abs(score) / totalSignalWeight);
+        const resolvedIsBuy = rangeSetup
+            ? nearSupport && !nearResistance
+                ? true
+                : nearResistance && !nearSupport
+                    ? false
+                    : score !== 0
+                        ? score > 0
+                        : trendScore >= 0
+            : isBuy;
         const common = {
-            isBuy, pBuy, pSell, probability, confidence, accuracy: getRollingAccuracy(),
+            isBuy: resolvedIsBuy, pBuy, pSell, probability, confidence, accuracy: getRollingAccuracy(),
             score, regime, generatedAt: Date.now(), support, resistance, rangePosition,
             features: { rsi, impulse, volumeRatio, expansion, nearSupport, nearResistance,
                 rejectedSupport, rejectedResistance, breakoutUp, breakoutDown },
             dataFreshnessMs: container?._lastMarketMessageAt
                 ? Date.now() - container._lastMarketMessageAt : null
         };
-        if (unsafe) return { ...common, status: "NO_TRADE", isBuy: null, reasonCode: "unsafe_market", reason: "Рынок слишком резкий или данные нестабильны" };
-        if (boundaryBlock) return { ...common, status: "NO_TRADE", isBuy: null, reasonCode: "range_no_rejection", reason: "В боковике нет подтверждённого отбоя от границы" };
-        if (exhaustionBlock) return { ...common, status: "NO_TRADE", isBuy: null, reasonCode: "exhaustion", reason: "Цена у границы без подтверждённого продолжения" };
-        if (conflict || probability < SIGNAL_CONFIG.minProbability || confidence < SIGNAL_CONFIG.minConfidence) {
-            return { ...common, status: "NO_TRADE", isBuy: null, reasonCode: "weak_edge", reason: "Преимущество setup недостаточно сильное" };
-        }
-        if (rangeMarket && !breakoutUp && !breakoutDown) {
-            const rangeDirectionAllowed = (isBuy && nearSupport && rejectedSupport)
-                || (!isBuy && nearResistance && rejectedResistance);
-            if (!rangeDirectionAllowed) {
-                return { ...common, status: "NO_TRADE", isBuy: null, reasonCode: "wrong_range_side", reason: "Направление не подтверждено границей боковика" };
-            }
-        }
-        const reason = rangeMarket
-            ? (isBuy ? "BUY от поддержки после rejection" : "SELL от сопротивления после rejection")
-            : (isBuy ? "TREND continuation вверх" : "TREND continuation вниз");
-        return { ...common, status: isBuy ? "BUY" : "SELL", reasonCode: rangeMarket ? "range_rejection" : "trend_alignment", reason };
+        const reason = rangeSetup
+            ? (nearSupport && !nearResistance
+                ? "BUY от нижней границы боковика"
+                : nearResistance && !nearSupport
+                    ? "SELL от верхней границы боковика"
+                    : resolvedIsBuy
+                        ? "BUY по перевесу факторов в боковике"
+                        : "SELL по перевесу факторов в боковике")
+            : unsafe
+                ? (resolvedIsBuy ? "BUY • повышенная волатильность" : "SELL • повышенная волатильность")
+                : (resolvedIsBuy ? "TREND continuation вверх" : "TREND continuation вниз");
+        return {
+            ...common,
+            status: resolvedIsBuy ? "BUY" : "SELL",
+            reasonCode: rangeSetup ? "range_bias" : unsafe ? "volatile_bias" : "trend_alignment",
+            reason
+        };
     }
 
     function getRollingAccuracy(){
@@ -2773,6 +2836,7 @@ ensureDefaultModel();
         countdownDeadline = 0;
         countdownLastRemaining = -1;
         countdownRender = null;
+        latestLiveDecision = null;
         clearInterval(signalEntrySyncTimer);
         signalEntrySyncTimer = null;
         signalEntryPrice = null;
@@ -2879,6 +2943,20 @@ document.addEventListener("DOMContentLoaded", () => {
     let connectionTimers = [];
     let isConnected = false;
 
+    const focusPlatformInput = () => {
+        if (document.activeElement === input) return;
+        mobileViewportController.rememberScroll();
+        input.focus({ preventScroll: true });
+    };
+
+    input.addEventListener("focus", () => {
+        mobileViewportController.rememberScroll();
+    });
+
+    input.addEventListener("blur", () => {
+        mobileViewportController.restoreAfterBlur();
+    });
+
     input.addEventListener("input", () => {
         if (isConnected) return;
         connectionTimers.forEach(clearTimeout);
@@ -2894,7 +2972,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (isConnected) {
             isConnected = false;
             input.disabled = false;
-            input.focus();
+            input.blur();
+            mobileViewportController.restoreAfterBlur();
             document.body.classList.remove("api-connected");
             status.textContent = "";
             status.className = "platform-status";
@@ -2907,7 +2986,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!value) {
             status.textContent = "Введите URL платформы.";
             status.className = "platform-status invalid";
-            input.focus();
+            focusPlatformInput();
             return;
         }
         let platformUrl;
@@ -2916,17 +2995,19 @@ document.addEventListener("DOMContentLoaded", () => {
         } catch (_) {
             status.textContent = "Введите корректный URL платформы, например https://example.com";
             status.className = "platform-status invalid";
-            input.focus();
+            focusPlatformInput();
             return;
         }
         if (!["http:", "https:"].includes(platformUrl.protocol) || !platformUrl.hostname) {
             status.textContent = "URL должен начинаться с http:// или https://";
             status.className = "platform-status invalid";
-            input.focus();
+            focusPlatformInput();
             return;
         }
         connectionTimers.forEach(clearTimeout);
         connectionTimers = [];
+        input.blur();
+        mobileViewportController.restoreAfterBlur();
         input.disabled = true;
         connectionOverlay?.removeAttribute("hidden");
         connectionOverlay?.classList.remove("is-success");
