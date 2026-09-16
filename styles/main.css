@@ -6,13 +6,13 @@
 /* =========================
    Base
 ========================= */
+:root{--visual-viewport-height:100dvh}
 html,body{width:100%;min-height:100%;font-family:Arial, sans-serif;background:#020407;color:#e7edf4;overflow-x:hidden;overflow-y:auto}
 html{-webkit-tap-highlight-color:transparent;overscroll-behavior-x:none}
 button,a,input,[role="button"]{touch-action:manipulation}
 .app-wrapper{
     min-height:100vh;
     min-height:100svh;
-    min-height:100dvh;
     position:relative;
     isolation:isolate;
     overflow:visible;
@@ -25,12 +25,6 @@ button,a,input,[role="button"]{touch-action:manipulation}
     padding-bottom:max(16px, env(safe-area-inset-bottom));
     padding-left:max(16px, env(safe-area-inset-left));
 }
-@media (max-width:700px){
-    .app-wrapper{
-        min-height:100dvh;
-    }
-}
-
 /* Straight animated grid background */
 .app-wrapper::before{
     content:"";
@@ -485,7 +479,6 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
     body{-webkit-text-size-adjust:100%;touch-action:pan-y;overflow-x:hidden}
     .app-wrapper{
         min-height:100svh;
-        min-height:100dvh;
         padding-top:max(12px, env(safe-area-inset-top));
         padding-right:max(12px, env(safe-area-inset-right));
         padding-bottom:max(12px, env(safe-area-inset-bottom));
@@ -519,8 +512,21 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
         min-height:44px;
         touch-action:manipulation;
     }
-    .cp-overlay,.ex-overlay,.vip-overlay{padding:10px;align-items:flex-start;overflow:auto;-webkit-overflow-scrolling:touch}
-    .cp,.ex{margin:auto 0;max-height:calc(100dvh - 20px);overflow:auto}
+    .cp-overlay,.ex-overlay,.md-overlay,.vip-overlay{
+        padding:10px;
+        align-items:flex-start;
+        height:var(--visual-viewport-height,100dvh);
+        max-height:100%;
+        overflow:auto;
+        overscroll-behavior:contain;
+        -webkit-overflow-scrolling:touch;
+    }
+    .cp,.ex,.md{
+        margin:auto 0;
+        max-height:calc(var(--visual-viewport-height,100dvh) - 20px);
+        overflow:auto;
+        -webkit-overflow-scrolling:touch;
+    }
     .cp-list{max-height:45dvh}
     .field-block,.settings-heading,.submit-btn,.platform-connect-btn,.faq-question,.verification-link{
         -webkit-user-select:none;
@@ -540,7 +546,7 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 
     .app-wrapper{
         width:100%;
-        min-height:100dvh;
+        min-height:100svh;
         padding-top:max(12px,env(safe-area-inset-top));
         padding-right:max(12px,env(safe-area-inset-right));
         padding-bottom:max(12px,env(safe-area-inset-bottom));
@@ -573,18 +579,30 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
         width:100%;
     }
 
-    .cp-overlay,.ex-overlay{
+    .cp-overlay,.ex-overlay,.md-overlay,.vip-overlay{
         position:fixed;
         inset:0;
-        height:100%;
-        min-height:100dvh;
-        overflow:hidden;
+        height:var(--visual-viewport-height,100dvh);
+        min-height:0;
+        overflow:auto;
         overscroll-behavior:contain;
+        -webkit-overflow-scrolling:touch;
     }
 
-    .cp,.ex{
-        max-height:calc(100dvh - 20px);
-        overflow:hidden;
+    .cp,.ex,.md{
+        max-height:calc(var(--visual-viewport-height,100dvh) - 20px);
+        overflow:auto;
+        -webkit-overflow-scrolling:touch;
+    }
+
+    .vip-sheet{
+        max-height:calc(var(--visual-viewport-height,100dvh) - 20px);
+    }
+
+    .vip-body{
+        overflow-y:auto;
+        overscroll-behavior:contain;
+        -webkit-overflow-scrolling:touch;
     }
 
     .cp-search input{
