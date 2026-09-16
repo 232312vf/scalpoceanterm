@@ -64,6 +64,11 @@
                         <div class="signal-chart-direction" id="signalChartDirection">BUY</div>
                         <div class="signal-chart-expiry" id="signalChartExpiry">Экспирация 1:00</div>
                         <div class="signal-entry-line" id="signalEntryLine"><span id="signalEntryLabel">BUY • EXP 1:00</span></div>
+                        <div class="trade-outcome" id="tradeOutcome" hidden>
+                            <div class="trade-outcome-icon" aria-hidden="true">✓</div>
+                            <div class="trade-outcome-title" id="tradeOutcomeTitle">СДЕЛКА В ПЛЮСЕ</div>
+                            <div class="trade-outcome-copy" id="tradeOutcomeCopy">Результат зафиксирован</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -124,6 +129,10 @@
                         <div class="inline-signal-time" id="inlineSignalTime">1:00</div>
                         <div class="inline-signal-issued" id="inlineSignalIssued">Сигнал выдан в 00:00</div>
                         <div class="inline-signal-next">По окончанию данного сигнала можно получить новый</div>
+                        <div class="inline-trade-outcome" id="inlineTradeOutcome" hidden>
+                            <span class="inline-trade-outcome-icon" aria-hidden="true">✓</span>
+                            <span id="inlineTradeOutcomeText">Сделка в плюсе</span>
+                        </div>
                     </div>
                 </div>
                 </div>
@@ -151,6 +160,30 @@
                 </section>
             </div>
         </div>
+
+        <section class="history-section" aria-label="История сделок">
+            <button class="history-toggle" id="historyToggle" type="button" aria-expanded="false" aria-controls="tradeHistory">
+                <span class="history-toggle-icon" aria-hidden="true">↗</span>
+                <span>История сделок</span>
+                <span class="history-toggle-chevron" aria-hidden="true">⌄</span>
+            </button>
+            <div class="trade-history" id="tradeHistory" hidden>
+                <div class="trade-history-head">
+                    <div>
+                        <span class="panel-eyebrow">TRADING JOURNAL</span>
+                        <h3 id="tradeHistoryTitle">История сделок</h3>
+                    </div>
+                    <button class="history-clear" id="historyClear" type="button">Очистить</button>
+                </div>
+                <div class="history-stats">
+                    <div class="history-stat is-profit"><span>Плюс</span><strong id="profitCount">0</strong></div>
+                    <div class="history-stat is-loss"><span>Минус</span><strong id="lossCount">0</strong></div>
+                </div>
+                <div class="history-list" id="tradeHistoryList">
+                    <div class="history-empty" id="historyEmpty">Завершённые сделки появятся здесь</div>
+                </div>
+            </div>
+        </section>
 
         <div class="glass-signal">
             <div class="signal-top">
