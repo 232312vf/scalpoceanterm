@@ -5,7 +5,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const telegramWebApp = window.Telegram?.WebApp;
     if (telegramWebApp) {
         telegramWebApp.ready();
-        telegramWebApp.expand();
+        if (!telegramWebApp.isExpanded) telegramWebApp.expand();
     }
 
     document.body.style.overflow = "";
@@ -13,7 +13,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const syncViewportHeight = () => {
         const viewport = window.visualViewport;
         const height = viewport ? viewport.height : window.innerHeight;
-        document.documentElement.style.setProperty("--viewport-height", `${Math.round(height)}px`);
+        document.documentElement.style.setProperty("--visual-viewport-height", `${Math.round(height)}px`);
     };
     syncViewportHeight();
     window.addEventListener("resize", syncViewportHeight, { passive: true });
@@ -77,20 +77,6 @@ let state = {
     expirySeconds: null,   // seconds number
     model: null
 };
-
-function enterTelegramFullscreen() {
-    const telegramWebApp = window.Telegram?.WebApp;
-    if (!telegramWebApp) return;
-
-    telegramWebApp.expand?.();
-    const requestFullscreen = telegramWebApp.requestFullscreen;
-    if (typeof requestFullscreen !== "function") return;
-
-    Promise.resolve(requestFullscreen.call(telegramWebApp)).catch(() => {
-        // Older Telegram clients may reject fullscreen; expanded mode remains available.
-        telegramWebApp.expand?.();
-    });
-}
 
 // Модель по умолчанию (фиксированная)
 // Модель по умолчанию (фиксированная)
@@ -299,7 +285,6 @@ function restoreResult() {
 // Helpers (UI)
 // =============================
 function selectField(field) {
-    enterTelegramFullscreen();
     if (field === "pair")   { CurrencyPairPopup.open();   return; }
     if (field === "expiry") { CurrencyExpiryPopup.open(); return; }
     if (field === "model")  { /* модель фиксирована, поп-ап не нужен */ return; }
@@ -390,10 +375,8 @@ function updateChart(symbol, timeframe, forceReload = false) {
     const container = document.getElementById("tv_chart_container");
     if (!container || !window.LightweightCharts) return;
     const mobilePerformance = window.matchMedia("(max-width: 700px)").matches;
-
     const intervalMap = {
-        S1: "1", S30: "1",
-        M1: "1", M3: "3", M5: "5", M15: "15", M30: "30",
+        S1: "1", S30: "1", M1: "1", M3: "3", M5: "5", M15: "15", M30: "30",
         H1: "60", H4: "240", D1: "D"
     };
     const interval = intervalMap[String(timeframe).toUpperCase()] || "1";
@@ -401,8 +384,7 @@ function updateChart(symbol, timeframe, forceReload = false) {
     const requestedSymbol = String(symbol || "BTC/USDT").replace(/[^a-z0-9]/gi, "").toUpperCase();
     const binanceSymbol = supportedSymbols.has(requestedSymbol) ? requestedSymbol : "BTCUSDT";
     const chartIntervalMap = {
-        "1": "1m", "3": "3m", "5": "5m", "15": "15m",
-        "30": "30m", "60": "1h", "240": "4h", D: "1d"
+        "1": "1m", "3": "3m", "5": "5m", "15": "15m", "30": "30m", "60": "1h", "240": "4h", D: "1d"
     };
     const chartInterval = chartIntervalMap[interval] || "1m";
     const chartKey = `${binanceSymbol}:${chartInterval}`;
@@ -410,159 +392,163 @@ function updateChart(symbol, timeframe, forceReload = false) {
     if (chartTitle) chartTitle.textContent = `${binanceSymbol.slice(0, -4)}/USDT`;
 
     if (!forceReload && container._chartKey === chartKey && container._chart) return;
-    container._chartResizeObserver?.disconnect();
-    container._chartSocket?.close();
-    container._chart?.remove();
-    container._chartKey = chartKey;
-    const chartApiOverlay = document.getElementById("chartApiOverlay");
-    const signalChartOverlay = document.getElementById("signalChartOverlay");
-    container.replaceChildren();
-    if (chartApiOverlay) container.appendChild(chartApiOverlay);
-    if (signalChartOverlay) container.appendChild(signalChartOverlay);
 
-    const chart = LightweightCharts.createChart(container, {
-        width: container.clientWidth,
-        height: container.clientHeight,
-        layout: { background: { color: "#101722" }, textColor: "#b9c5d3" },
-        grid: {
-            vertLines: { color: "rgba(255,255,255,.08)" },
-            horzLines: { color: "rgba(255,255,255,.08)" }
-        },
-        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-        rightPriceScale: { borderColor: "rgba(255,255,255,.12)" },
-        timeScale: {
-            borderColor: "rgba(255,255,255,.12)",
-            timeVisible: true,
-            secondsVisible: false,
-            rightOffset: 2,
-            barSpacing: 10,
-            minBarSpacing: 3,
-            tickMarkFormatter: (time) => {
-                if (typeof time !== "number") return "";
-                return new Intl.DateTimeFormat(undefined, {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    hour12: false
-                }).format(new Date(time * 1000));
+    if (container._liveFrame != null) {
+        clearTimeout(container._liveFrame);
+        container._liveFrame = null;
+    }
+    container._pendingLiveCandle = null;
+
+    let chart = container._chart;
+    let candles = container._chartCandles;
+    let volume = container._chartVolume;
+    if (!chart) {
+        const timeFormatter = new Intl.DateTimeFormat(undefined, {
+            hour: "2-digit", minute: "2-digit", hour12: false
+        });
+        chart = LightweightCharts.createChart(container, {
+            width: container.clientWidth,
+            height: container.clientHeight,
+            layout: { background: { color: "#101722" }, textColor: "#b9c5d3" },
+            grid: {
+                vertLines: { color: "rgba(255,255,255,.08)" },
+                horzLines: { color: "rgba(255,255,255,.08)" }
+            },
+            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+            handleScroll: { horzTouchDrag: true, vertTouchDrag: false },
+            handleScale: { axisPressedMouseMove: true, pinch: true, mouseWheel: true },
+            rightPriceScale: { borderColor: "rgba(255,255,255,.12)" },
+            timeScale: {
+                borderColor: "rgba(255,255,255,.12)",
+                timeVisible: true,
+                secondsVisible: false,
+                rightOffset: 2,
+                barSpacing: 10,
+                minBarSpacing: 3,
+                tickMarkFormatter: (time) => typeof time === "number"
+                    ? timeFormatter.format(new Date(time * 1000))
+                    : ""
             }
-        }
-    });
-    const candles = chart.addCandlestickSeries({
-        upColor: "#16c79a",
-        downColor: "#f04f5f",
-        borderUpColor: "#16c79a",
-        borderDownColor: "#f04f5f",
-        wickUpColor: "#16c79a",
-        wickDownColor: "#f04f5f"
-    });
-    container._chartCandles = candles;
-    const volume = chart.addHistogramSeries({
-        priceFormat: { type: "volume" },
-        priceScaleId: "",
-        scaleMargins: { top: 0.8, bottom: 0 }
-    });
-    chart.priceScale("").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-    container._chart = chart;
-    chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
-        window.repositionSignalEntryLine?.();
-    });
+        });
+        candles = chart.addCandlestickSeries({
+            upColor: "#16c79a", downColor: "#f04f5f",
+            borderUpColor: "#16c79a", borderDownColor: "#f04f5f",
+            wickUpColor: "#16c79a", wickDownColor: "#f04f5f"
+        });
+        volume = chart.addHistogramSeries({
+            priceFormat: { type: "volume" },
+            priceScaleId: "",
+            scaleMargins: { top: 0.8, bottom: 0 }
+        });
+        chart.priceScale("").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+        chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+            window.repositionSignalEntryLine?.();
+        });
+        container._chart = chart;
+        container._chartCandles = candles;
+        container._chartVolume = volume;
+        container._chartResizeObserver = new ResizeObserver(() => {
+            if (container._chartResizeFrame != null) return;
+            container._chartResizeFrame = requestAnimationFrame(() => {
+                container._chartResizeFrame = null;
+                if (container._chart === chart) {
+                    chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+                    window.repositionSignalEntryLine?.();
+                }
+            });
+        });
+        container._chartResizeObserver.observe(container);
+    }
 
-    const candleLimit = mobilePerformance ? 120 : 300;
-    fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${chartInterval}&limit=${candleLimit}`)
+    container._chartKey = chartKey;
+    container._chartRequestId = (container._chartRequestId || 0) + 1;
+    const requestId = container._chartRequestId;
+    container._chartAbortController?.abort();
+    container._chartAbortController = new AbortController();
+    if (container._chartSocket && container._chartSocket.readyState < WebSocket.CLOSING) {
+        container._chartSocket.close(1000, "chart switch");
+    }
+    container._chartSocket = null;
+    container._candleData = [];
+    container._lastCandle = null;
+    candles.setData([]);
+    volume.setData([]);
+
+    const isCurrent = () => container._chartKey === chartKey && container._chartRequestId === requestId;
+    const candleLimit = mobilePerformance ? 100 : 240;
+    fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${chartInterval}&limit=${candleLimit}`, {
+        signal: container._chartAbortController.signal
+    })
         .then((response) => {
             if (!response.ok) throw new Error(`Binance request failed: ${response.status}`);
             return response.json();
         })
         .then((rows) => {
-            if (container._chartKey !== chartKey) return;
+            if (!isCurrent()) return;
             const candleData = rows.map((row) => ({
-                time: Math.floor(row[0] / 1000),
-                open: Number(row[1]),
-                high: Number(row[2]),
-                low: Number(row[3]),
-                close: Number(row[4]),
-                volume: Number(row[5])
+                time: Math.floor(row[0] / 1000), open: Number(row[1]), high: Number(row[2]),
+                low: Number(row[3]), close: Number(row[4]), volume: Number(row[5])
             }));
             const volumeData = rows.map((row) => ({
-                time: Math.floor(row[0] / 1000),
-                value: Number(row[5]),
+                time: Math.floor(row[0] / 1000), value: Number(row[5]),
                 color: Number(row[4]) >= Number(row[1]) ? "rgba(22,199,154,.45)" : "rgba(240,79,95,.45)"
             }));
             candles.setData(candleData);
             volume.setData(volumeData);
             container._candleData = candleData;
-            container._lastCandle = candleData[candleData.length - 1];
+            container._lastCandle = candleData[candleData.length - 1] || null;
             const visibleBars = Math.min(45, candleData.length);
-            chart.timeScale().setVisibleLogicalRange({
+            if (visibleBars) chart.timeScale().setVisibleLogicalRange({
                 from: Math.max(0, candleData.length - visibleBars),
                 to: candleData.length + 2
             });
         })
         .catch((error) => {
-            console.error(`Unable to load ${binanceSymbol} candles:`, error);
+            if (error.name !== "AbortError" && isCurrent()) {
+                console.warn(`Unable to load ${binanceSymbol} candles:`, error);
+            }
         });
 
     const socket = new WebSocket(`wss://stream.binance.com:9443/ws/${binanceSymbol.toLowerCase()}@kline_${chartInterval}`);
     socket.addEventListener("message", (event) => {
-        if (container._chartKey !== chartKey) return;
-        const now = performance.now();
-        if (mobilePerformance && now - (container._lastLiveRender || 0) < 300) return;
-        container._lastLiveRender = now;
-        const payload = JSON.parse(event.data);
+        if (!isCurrent()) return;
+        let payload;
+        try { payload = JSON.parse(event.data); } catch (_) { return; }
         const kline = payload.k;
         if (!kline) return;
-        const open = Number(kline.o);
-        const close = Number(kline.c);
-        candles.update({
-            time: Math.floor(kline.t / 1000),
-            open,
-            high: Number(kline.h),
-            low: Number(kline.l),
-            close,
-            volume: Number(kline.v)
-        });
-        volume.update({
-            time: Math.floor(kline.t / 1000),
-            value: Number(kline.v),
-            color: close >= open ? "rgba(22,199,154,.45)" : "rgba(240,79,95,.45)"
-        });
         const liveCandle = {
-            time: Math.floor(kline.t / 1000),
-            open,
-            high: Number(kline.h),
-            low: Number(kline.l),
-            close,
-            volume: Number(kline.v)
+            time: Math.floor(kline.t / 1000), open: Number(kline.o), high: Number(kline.h),
+            low: Number(kline.l), close: Number(kline.c), volume: Number(kline.v)
         };
-        const lastIndex = container._candleData?.length - 1;
-        if (lastIndex >= 0 && container._candleData[lastIndex].time === liveCandle.time) {
-            container._candleData[lastIndex] = liveCandle;
-        } else {
-            container._candleData?.push(liveCandle);
+        const applyLive = () => {
+            container._liveFrame = null;
+            if (!isCurrent()) return;
+            const nextCandle = container._pendingLiveCandle || liveCandle;
+            candles.update(nextCandle);
+            volume.update({
+                time: nextCandle.time,
+                value: nextCandle.volume,
+                color: nextCandle.close >= nextCandle.open ? "rgba(22,199,154,.45)" : "rgba(240,79,95,.45)"
+            });
+            const lastIndex = container._candleData?.length - 1;
+            if (lastIndex >= 0 && container._candleData[lastIndex].time === nextCandle.time) {
+                container._candleData[lastIndex] = nextCandle;
+            } else if (container._candleData) {
+                container._candleData.push(nextCandle);
+            }
+            container._lastCandle = nextCandle;
+            container._lastLiveRender = performance.now();
+        };
+        container._pendingLiveCandle = liveCandle;
+        if (container._liveFrame == null) {
+            const wait = mobilePerformance ? Math.max(0, 250 - (performance.now() - (container._lastLiveRender || 0))) : 0;
+            container._liveFrame = window.setTimeout(() => requestAnimationFrame(applyLive), wait);
         }
-        container._lastCandle = liveCandle;
     });
     socket.addEventListener("error", () => {
-        if (container._chartKey === chartKey) {
-            console.warn("Binance live chart connection failed");
-        }
+        if (isCurrent()) console.warn("Binance live chart connection failed");
     });
     container._chartSocket = socket;
-
-    let resizeFrame = null;
-    const resize = () => {
-        if (resizeFrame !== null) return;
-        resizeFrame = requestAnimationFrame(() => {
-            resizeFrame = null;
-            if (container._chart === chart) {
-                chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
-                window.repositionSignalEntryLine?.();
-            }
-        });
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(container);
-    container._chartResizeObserver = observer;
 }
 
 window.updateChart = updateChart;
