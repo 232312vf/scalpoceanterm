@@ -122,6 +122,7 @@ ensureDefaultModel(true);   // жёстко перезапишет сохран�
 // =============================
 const STATE_KEY  = "ps_state_v2";
 const RESULT_KEY = "ps_last_result_v1";
+const HISTORY_KEY = "ps_trade_history_v1";
 const LANG_KEY   = "ps_lang_v1";
 
 function saveState() {
@@ -156,6 +157,104 @@ function restoreState() {
 function saveResult(res) {
     try { localStorage.setItem(RESULT_KEY, JSON.stringify(res)); } catch (_) {}
 }
+
+function readTradeHistory() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+        return Array.isArray(parsed) ? parsed.slice(0, 30) : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+function escapeHistoryText(value) {
+    return String(value ?? "").replace(/[&<>"']/g, char => ({
+        "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;"
+    }[char]));
+}
+
+function renderTradeHistory() {
+    const list = document.getElementById("tradeHistoryList");
+    const empty = document.getElementById("historyEmpty");
+    const profitCount = document.getElementById("profitCount");
+    const lossCount = document.getElementById("lossCount");
+    if (!list || !profitCount || !lossCount) return;
+
+    const history = readTradeHistory();
+    const profits = history.filter(item => item.isWin).length;
+    const losses = history.length - profits;
+    profitCount.textContent = String(profits);
+    lossCount.textContent = String(losses);
+    if (!history.length) {
+        list.innerHTML = "";
+        if (empty) {
+            empty.textContent = "Завершённые сделки появятся здесь";
+            list.appendChild(empty);
+        }
+        return;
+    }
+
+    list.innerHTML = history.map(item => `
+        <div class="history-row ${item.isWin ? "is-profit" : "is-loss"}">
+            <span class="history-result-dot">${item.isWin ? "+" : "−"}</span>
+            <span class="history-pair">${escapeHistoryText(item.pair)}</span>
+            <span class="history-direction">${escapeHistoryText(item.direction)}</span>
+            <time>${escapeHistoryText(item.time)}</time>
+        </div>
+    `).join("");
+}
+
+function recordTradeOutcome({ pair, isBuy, isWin }) {
+    const history = readTradeHistory();
+    history.unshift({
+        pair,
+        direction: isBuy ? "BUY" : "SELL",
+        isWin,
+        time: new Intl.DateTimeFormat("ru-RU", {
+            hour: "2-digit", minute: "2-digit"
+        }).format(new Date())
+    });
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 30))); } catch (_) {}
+    renderTradeHistory();
+}
+
+renderTradeHistory();
+document.getElementById("historyToggle")?.addEventListener("click", (event) => {
+    const toggle = event.currentTarget;
+    const history = document.getElementById("tradeHistory");
+    if (!history) return;
+    const isOpen = toggle.getAttribute("aria-expanded") === "true";
+    toggle.setAttribute("aria-expanded", String(!isOpen));
+    history.hidden = isOpen;
+});
+document.getElementById("historyClear")?.addEventListener("click", () => {
+    try { localStorage.removeItem(HISTORY_KEY); } catch (_) {}
+    renderTradeHistory();
+});
+
+function setAppSection(section) {
+    const main = document.querySelector(".main");
+    const terminalTab = document.getElementById("terminalTab");
+    const tradesTab = document.getElementById("tradesTab");
+    const faqTab = document.getElementById("faqTab");
+    if (!main || !terminalTab || !tradesTab || !faqTab) return;
+
+    const showTrades = section === "trades";
+    const showFaq = section === "faq";
+    main.classList.toggle("is-history-view", showTrades);
+    main.classList.toggle("is-faq-view", showFaq);
+    terminalTab.classList.toggle("is-active", !showTrades && !showFaq);
+    tradesTab.classList.toggle("is-active", showTrades);
+    faqTab.classList.toggle("is-active", showFaq);
+    terminalTab.setAttribute("aria-selected", String(!showTrades));
+    tradesTab.setAttribute("aria-selected", String(showTrades));
+    faqTab.setAttribute("aria-selected", String(showFaq));
+    if (showTrades) renderTradeHistory();
+}
+
+document.getElementById("terminalTab")?.addEventListener("click", () => setAppSection("terminal"));
+document.getElementById("tradesTab")?.addEventListener("click", () => setAppSection("trades"));
+document.getElementById("faqTab")?.addEventListener("click", () => setAppSection("faq"));
 
 function restoreResult() {
     try {
@@ -2009,6 +2108,11 @@ ensureDefaultModel();
     const signalEntryLabel = q("signalEntryLabel");
     const chartPath = q("signalChartPath");
     const chartWidget = q("tv_chart_container");
+    const tradeOutcome = q("tradeOutcome");
+    const tradeOutcomeTitle = q("tradeOutcomeTitle");
+    const tradeOutcomeCopy = q("tradeOutcomeCopy");
+    const inlineTradeOutcome = q("inlineTradeOutcome");
+    const inlineTradeOutcomeText = q("inlineTradeOutcomeText");
     let countdownTimer = null;
     let countdownFrame = null;
     let countdownDeadline = 0;
@@ -2017,6 +2121,7 @@ ensureDefaultModel();
     let signalEntryPrice = null;
     let signalEntrySyncTimer = null;
     let signalTimers = [];
+    let currentTrade = null;
 
     // Buttons
     q("getSignalBtn")?.addEventListener("click", start);
@@ -2046,6 +2151,9 @@ ensureDefaultModel();
             inlinePanel.style.display = "flex";
         }
         inlineResult?.setAttribute("hidden", "");
+        inlineTradeOutcome?.setAttribute("hidden", "");
+        tradeOutcome?.setAttribute("hidden", "");
+        chartOverlay?.classList.remove("outcome-win", "outcome-loss");
         if (inlineStatus) inlineStatus.textContent = "ИЩЕМ ПОЗИЦИЮ";
         signalTimers.push(setTimeout(() => { if (inlineStatus) inlineStatus.textContent = "СОПОСТАВЛЯЕМ ПО ПАТТЕРНАМ"; }, 2500));
         signalTimers.push(setTimeout(() => { if (inlineStatus) inlineStatus.textContent = "ПОЛУЧАЕМ АНАЛИЗ ОТ AI-АГЕНТА"; }, 5500));
@@ -2057,6 +2165,7 @@ ensureDefaultModel();
         const isBuy = decision.isBuy;
         const direction = isBuy ? "BUY" : "SELL";
         const expiry = Math.max(1, Number(state.expirySeconds) || 60);
+        currentTrade = { pair, isBuy, expiry };
         if (inlineStatus) inlineStatus.textContent = "СИГНАЛ ПОЛУЧЕН";
         if (directionVisual) {
             directionVisual.classList.toggle("is-buy", isBuy);
@@ -2158,7 +2267,7 @@ ensureDefaultModel();
                 countdownFrame = null;
                 countdownTimer = null;
                 inlineTime?.classList.remove("is-counting");
-                resetAll();
+                settleTrade();
                 return;
             }
             countdownFrame = requestAnimationFrame(render);
@@ -2169,6 +2278,43 @@ ensureDefaultModel();
             countdownTimer = null;
             countdownFrame = requestAnimationFrame(render);
         }, 1000);
+    }
+
+    function settleTrade(){
+        const trade = currentTrade;
+        if (!trade) {
+            resetAll();
+            return;
+        }
+
+        const container = document.getElementById("tv_chart_container");
+        const lastCandle = container?._lastCandle;
+        const close = Number(lastCandle?.close);
+        const entry = Number(signalEntryPrice);
+        const isWin = Number.isFinite(close) && Number.isFinite(entry)
+            ? (trade.isBuy ? close >= entry : close <= entry)
+            : (Number(lastCandle?.close) >= Number(lastCandle?.open)) === trade.isBuy;
+
+        recordTradeOutcome({ pair: trade.pair, isBuy: trade.isBuy, isWin });
+        showTradeOutcome(isWin);
+        currentTrade = null;
+        signalTimers.push(setTimeout(resetAll, 4800));
+    }
+
+    function showTradeOutcome(isWin){
+        const title = isWin ? "СДЕЛКА В ПЛЮСЕ" : "СДЕЛКА В МИНУСЕ";
+        const copy = isWin ? "Результат зафиксирован" : "Сигнал завершён";
+        chartOverlay?.classList.remove("signal-persistent");
+        chartOverlay?.classList.toggle("outcome-win", isWin);
+        chartOverlay?.classList.toggle("outcome-loss", !isWin);
+        chartWidget?.classList.remove("signal-active");
+        if (tradeOutcomeTitle) tradeOutcomeTitle.textContent = title;
+        if (tradeOutcomeCopy) tradeOutcomeCopy.textContent = copy;
+        tradeOutcome?.removeAttribute("hidden");
+        if (inlineTradeOutcomeText) inlineTradeOutcomeText.textContent = title;
+        inlineTradeOutcome?.classList.toggle("is-win", isWin);
+        inlineTradeOutcome?.classList.toggle("is-loss", !isWin);
+        inlineTradeOutcome?.removeAttribute("hidden");
     }
 
     document.addEventListener("visibilitychange", () => {
@@ -2459,9 +2605,12 @@ ensureDefaultModel();
             inlinePanel.style.display = "";
         }
         inlineResult?.setAttribute("hidden", "");
+        inlineTradeOutcome?.setAttribute("hidden", "");
         inlinePanel?.classList.remove("is-buy", "is-sell");
         chartOverlay?.setAttribute("hidden", "");
         chartOverlay?.classList.remove("signal-persistent");
+        chartOverlay?.classList.remove("outcome-win", "outcome-loss");
+        tradeOutcome?.setAttribute("hidden", "");
         inlineTime?.classList.remove("is-counting");
         chartWidget?.classList.remove("signal-active");
         const candles = document.getElementById("tv_chart_container")?._chartCandles;
@@ -2494,6 +2643,7 @@ ensureDefaultModel();
 
         const iconBox = document.getElementById("sigDirIcon");
         if (iconBox) iconBox.innerHTML = "";
+        currentTrade = null;
 
         checkReady();
     }
