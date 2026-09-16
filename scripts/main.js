@@ -2264,6 +2264,7 @@ ensureDefaultModel();
     const chartOverlay = q("signalChartOverlay");
     const chartImage = q("signalChartImage");
     const chartDirection = q("signalChartDirection");
+    const chartProbability = q("signalChartProbability");
     const chartExpiry = q("signalChartExpiry");
     const signalEntryLine = q("signalEntryLine");
     const signalEntryLabel = q("signalEntryLabel");
@@ -2321,9 +2322,10 @@ ensureDefaultModel();
         const entry = Number(trade?.entryPrice);
         if (!Number.isFinite(close) || !Number.isFinite(entry)) return;
         const delta = entry ? ((close - entry) / entry) * (trade.isBuy ? 1 : -1) : 0;
-        q("inlineTradeOutcome")?.classList.toggle("is-win", delta >= 0);
-        q("inlineTradeOutcome")?.classList.toggle("is-loss", delta < 0);
-        q("inlineTradeOutcomeText")?.replaceChildren(`LIVE ${delta >= 0 ? "+" : ""}${delta.toFixed(2)}%`);
+        const isPlus = delta >= 0;
+        q("inlineTradeOutcome")?.classList.toggle("is-win", isPlus);
+        q("inlineTradeOutcome")?.classList.toggle("is-loss", !isPlus);
+        q("inlineTradeOutcomeText")?.replaceChildren(`ИТОГ - ${isPlus ? "ПЛЮС" : "МИНУС"}`);
     }
 
     function start(){
@@ -2351,6 +2353,7 @@ ensureDefaultModel();
         inlineResult?.setAttribute("hidden", "");
         inlineTradeOutcome?.setAttribute("hidden", "");
         tradeOutcome?.setAttribute("hidden", "");
+        if (chartProbability) chartProbability.textContent = "Вероятность —";
         chartOverlay?.classList.remove("outcome-win", "outcome-loss");
         if (inlineStatus) inlineStatus.textContent = "ИЩЕМ ПОЗИЦИЮ";
         signalTimers.push(setTimeout(() => { if (inlineStatus) inlineStatus.textContent = "СОПОСТАВЛЯЕМ ПО ПАТТЕРНАМ"; }, 2500));
@@ -2374,6 +2377,7 @@ ensureDefaultModel();
             if (q("sigResult")) q("sigResult").hidden = false;
             if (q("sigAnalysis")) q("sigAnalysis").style.display = "none";
             inlineResult?.setAttribute("hidden", "");
+            if (chartProbability) chartProbability.textContent = "Вероятность —";
             chartOverlay?.setAttribute("hidden", "");
             chartWidget?.classList.remove("signal-active");
             return;
@@ -2388,7 +2392,7 @@ ensureDefaultModel();
             decisionSnapshot: { ...decision }
         };
         inlineTradeOutcome?.removeAttribute("hidden");
-        inlineTradeOutcomeText?.replaceChildren("LIVE • отслеживание цены");
+        inlineTradeOutcomeText?.replaceChildren("ИТОГ - ОЖИДАНИЕ");
         q("sigPair")?.replaceChildren(pair);
         q("sigTime")?.replaceChildren(state.time || "—");
         q("sigMarket")?.replaceChildren("BINANCE");
@@ -2400,7 +2404,11 @@ ensureDefaultModel();
         q("sigValid")?.replaceChildren(new Date(Date.now() + expiry * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
         if (q("sigResult")) q("sigResult").hidden = false;
         if (q("sigAnalysis")) q("sigAnalysis").style.display = "none";
-        if (inlineStatus) inlineStatus.textContent = `СИГНАЛ ПОЛУЧЕН • ${Math.round(decision.probability * 100)}%`;
+        const probabilityText = Number.isFinite(decision.probability)
+            ? `${Math.round(decision.probability * 100)}%`
+            : "—";
+        if (inlineStatus) inlineStatus.textContent = "СИГНАЛ ПОЛУЧЕН";
+        if (chartProbability) chartProbability.textContent = `Вероятность ${probabilityText}`;
         if (directionVisual) {
             directionVisual.classList.toggle("is-buy", isBuy);
             directionVisual.classList.toggle("is-sell", !isBuy);
@@ -2415,7 +2423,7 @@ ensureDefaultModel();
             timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit"
         }).format(new Date())}`;
         inlineResult?.removeAttribute("hidden");
-        showSignalChart(isBuy, direction, expiry, () => startCountdown(expiry));
+        showSignalChart(isBuy, direction, expiry, probabilityText, () => startCountdown(expiry));
         placeSignalMarker(isBuy, expiry);
         saveResult({
             schemaVersion: 2,
@@ -2432,9 +2440,10 @@ ensureDefaultModel();
         });
     }
 
-    function showSignalChart(isBuy, direction, expiry, onComplete){
+    function showSignalChart(isBuy, direction, expiry, probabilityText, onComplete){
         if (!chartOverlay) return;
         if (chartDirection) chartDirection.textContent = direction;
+        if (chartProbability) chartProbability.textContent = `Вероятность ${probabilityText || "—"}`;
         if (chartExpiry) chartExpiry.textContent = `Экспирация ${formatDuration(expiry)}`;
         if (signalEntryLine) {
             signalEntryLine.classList.toggle("is-buy", isBuy);
