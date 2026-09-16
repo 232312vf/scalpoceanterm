@@ -109,6 +109,7 @@ ensureDefaultModel(true);   // жёстко перезапишет сохран�
 const STATE_KEY  = "ps_state_v2";
 const RESULT_KEY = "ps_last_result_v1";
 const HISTORY_KEY = "ps_trade_history_v1";
+const SIGNAL_STATS_KEY = "ps_signal_stats_v2";
 const LANG_KEY   = "ps_lang_v1";
 
 function saveState() {
@@ -204,6 +205,26 @@ function recordTradeOutcome({ pair, isBuy, isWin }) {
     renderTradeHistory();
 }
 
+function recordSignalStats(trade, outcome, exitPrice) {
+    if (!trade || !["win", "loss"].includes(outcome)) return;
+    try {
+        const current = JSON.parse(localStorage.getItem(SIGNAL_STATS_KEY) || "[]");
+        const stats = Array.isArray(current) ? current : [];
+        stats.push({
+            pair: trade.pair,
+            direction: trade.isBuy ? "BUY" : "SELL",
+            probability: trade.decisionSnapshot?.probability ?? null,
+            confidence: trade.decisionSnapshot?.confidence ?? null,
+            regime: trade.decisionSnapshot?.regime ?? "UNKNOWN",
+            outcome,
+            entryPrice: trade.entryPrice,
+            exitPrice,
+            settledAt: Date.now()
+        });
+        localStorage.setItem(SIGNAL_STATS_KEY, JSON.stringify(stats.slice(-100)));
+    } catch (_) {}
+}
+
 renderTradeHistory();
 document.getElementById("historyToggle")?.addEventListener("click", (event) => {
     const toggle = event.currentTarget;
@@ -247,22 +268,30 @@ function restoreResult() {
         const raw = localStorage.getItem(RESULT_KEY);
         if (!raw) return;
         const r = JSON.parse(raw);
+        if (r.schemaVersion !== 2 || !["BUY", "SELL", "NO_TRADE"].includes(r.status)) {
+            localStorage.removeItem(RESULT_KEY);
+            return;
+        }
 
         // 1) Direction + icon
         const dirEl = document.getElementById("sigDirection");
         if (dirEl) {
-            dirEl.textContent = i18nFormatDirection(!!r.isBuy);
-            dirEl.classList.toggle("buy",  !!r.isBuy);
-            dirEl.classList.toggle("sell", !r.isBuy);
+            dirEl.textContent = r.status === "NO_TRADE" ? "NO TRADE" : i18nFormatDirection(!!r.isBuy);
+            dirEl.classList.toggle("buy", r.status === "BUY");
+            dirEl.classList.toggle("sell", r.status === "SELL");
         }
         const iconBox = document.getElementById("sigDirIcon");
-        if (iconBox) iconBox.innerHTML = r.isBuy ? BUY_SVG : SELL_SVG;
+        if (iconBox) iconBox.innerHTML = r.status === "BUY" ? BUY_SVG : r.status === "SELL" ? SELL_SVG : "";
 
         // 2) Fields (localized)
         const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v ?? t("v_dash"); };
         setText("sigPair",     r.pair);
-        setText("sigConf",     r.conf);
-        setText("sigAcc",      r.acc);
+        setText("sigConf",      r.confidence == null ? "—" : `${Math.round(r.confidence * 100)}%`);
+        setText("sigAcc",       r.accuracy == null ? "—" : `${Math.round(r.accuracy * 100)}%`);
+        setText("sigProbability", r.probability == null ? "—" : `${Math.round(r.probability * 100)}%`);
+        setText("sigReason",     r.reason || "—");
+        setText("sigRegime",     r.regime || "—");
+        setText("sigFeedStatus", "RESTORED");
         setText("sigMarket",   i18nMarketOTC(r.market === "OTC"));
         setText("sigStrength", i18nFormatStrength(r.strCode || "Medium"));
         setText("sigVol",      i18nFormatVolume(r.volCode || "Medium"));
@@ -382,7 +411,15 @@ function updateChart(symbol, timeframe, forceReload = false) {
     const interval = intervalMap[String(timeframe).toUpperCase()] || "1";
     const supportedSymbols = new Set(["BTC","ETH","SOL","BNB","XRP","ADA","DOGE","AVAX","LINK","DOT","LTC","TRX"].map(asset => `${asset}USDT`));
     const requestedSymbol = String(symbol || "BTC/USDT").replace(/[^a-z0-9]/gi, "").toUpperCase();
-    const binanceSymbol = supportedSymbols.has(requestedSymbol) ? requestedSymbol : "BTCUSDT";
+    const supportedSymbol = supportedSymbols.has(requestedSymbol);
+    const binanceSymbol = supportedSymbol ? requestedSymbol : "BTCUSDT";
+    if (!supportedSymbol) {
+        container._marketStatus = "UNSUPPORTED";
+        window.dispatchEvent(new CustomEvent("market:update", {
+            detail: { status: "NO_TRADE", reason: "Актив не поддерживается Binance feed", symbol: requestedSymbol }
+        }));
+        return;
+    }
     const chartIntervalMap = {
         "1": "1m", "3": "3m", "5": "5m", "15": "15m", "30": "30m", "60": "1h", "240": "4h", D: "1d"
     };
@@ -465,9 +502,7 @@ function updateChart(symbol, timeframe, forceReload = false) {
     const requestId = container._chartRequestId;
     container._chartAbortController?.abort();
     container._chartAbortController = new AbortController();
-    if (container._chartSocket && container._chartSocket.readyState < WebSocket.CLOSING) {
-        container._chartSocket.close(1000, "chart switch");
-    }
+    container._chartStreamCleanup?.();
     container._chartSocket = null;
     container._candleData = [];
     container._lastCandle = null;
@@ -497,6 +532,10 @@ function updateChart(symbol, timeframe, forceReload = false) {
             volume.setData(volumeData);
             container._candleData = candleData;
             container._lastCandle = candleData[candleData.length - 1] || null;
+            container._lastMarketMessageAt = Date.now();
+            window.dispatchEvent(new CustomEvent("market:update", {
+                detail: { source: "rest", symbol: binanceSymbol, interval: chartInterval, candle: container._lastCandle }
+            }));
             const visibleBars = Math.min(45, candleData.length);
             if (visibleBars) chart.timeScale().setVisibleLogicalRange({
                 from: Math.max(0, candleData.length - visibleBars),
@@ -509,49 +548,119 @@ function updateChart(symbol, timeframe, forceReload = false) {
             }
         });
 
-    const socket = new WebSocket(`wss://stream.binance.com:9443/ws/${binanceSymbol.toLowerCase()}@kline_${chartInterval}`);
-    socket.addEventListener("message", (event) => {
-        if (!isCurrent()) return;
-        let payload;
-        try { payload = JSON.parse(event.data); } catch (_) { return; }
-        const kline = payload.k;
-        if (!kline) return;
-        const liveCandle = {
-            time: Math.floor(kline.t / 1000), open: Number(kline.o), high: Number(kline.h),
-            low: Number(kline.l), close: Number(kline.c), volume: Number(kline.v)
-        };
-        const applyLive = () => {
-            container._liveFrame = null;
+    let socket = null;
+    let reconnectTimer = null;
+    let reconnectAttempt = 0;
+    let closedBySwitch = false;
+    const reconnectDelays = [1000, 2000, 5000, 10000, 30000];
+    const connectSocket = () => {
+        if (!isCurrent() || closedBySwitch) return;
+        container._marketStatus = "CONNECTING";
+        socket = new WebSocket(`wss://stream.binance.com:9443/ws/${binanceSymbol.toLowerCase()}@kline_${chartInterval}`);
+        container._chartSocket = socket;
+        socket.addEventListener("open", () => {
             if (!isCurrent()) return;
-            const nextCandle = container._pendingLiveCandle || liveCandle;
-            candles.update(nextCandle);
-            volume.update({
-                time: nextCandle.time,
-                value: nextCandle.volume,
-                color: nextCandle.close >= nextCandle.open ? "rgba(22,199,154,.45)" : "rgba(240,79,95,.45)"
-            });
-            const lastIndex = container._candleData?.length - 1;
-            if (lastIndex >= 0 && container._candleData[lastIndex].time === nextCandle.time) {
-                container._candleData[lastIndex] = nextCandle;
-            } else if (container._candleData) {
-                container._candleData.push(nextCandle);
+            reconnectAttempt = 0;
+            container._marketStatus = "LIVE";
+            window.dispatchEvent(new CustomEvent("market:update", { detail: { status: "LIVE" } }));
+        });
+        socket.addEventListener("message", (event) => {
+            if (!isCurrent()) return;
+            let payload;
+            try { payload = JSON.parse(event.data); } catch (_) { return; }
+            const kline = payload.k;
+            if (!kline) return;
+            const liveCandle = {
+                time: Math.floor(kline.t / 1000), open: Number(kline.o), high: Number(kline.h),
+                low: Number(kline.l), close: Number(kline.c), volume: Number(kline.v),
+                isClosed: Boolean(kline.x)
+            };
+            container._lastMarketMessageAt = Date.now();
+            container._marketStatus = "LIVE";
+            const applyLive = () => {
+                container._liveFrame = null;
+                if (!isCurrent()) return;
+                const nextCandle = container._pendingLiveCandle || liveCandle;
+                candles.update(nextCandle);
+                volume.update({
+                    time: nextCandle.time,
+                    value: nextCandle.volume,
+                    color: nextCandle.close >= nextCandle.open ? "rgba(22,199,154,.45)" : "rgba(240,79,95,.45)"
+                });
+                const lastIndex = container._candleData?.length - 1;
+                if (lastIndex >= 0 && container._candleData[lastIndex].time === nextCandle.time) {
+                    container._candleData[lastIndex] = nextCandle;
+                } else if (container._candleData) {
+                    container._candleData.push(nextCandle);
+                    if (container._candleData.length > 320) container._candleData.shift();
+                }
+                container._lastCandle = nextCandle;
+                container._lastLiveRender = performance.now();
+                window.dispatchEvent(new CustomEvent("market:update", {
+                    detail: { source: "websocket", symbol: binanceSymbol, interval: chartInterval, candle: nextCandle }
+                }));
+            };
+            container._pendingLiveCandle = liveCandle;
+            if (container._liveFrame == null) {
+                const wait = mobilePerformance ? Math.max(0, 250 - (performance.now() - (container._lastLiveRender || 0))) : 0;
+                container._liveFrame = window.setTimeout(() => requestAnimationFrame(applyLive), wait);
             }
-            container._lastCandle = nextCandle;
-            container._lastLiveRender = performance.now();
-        };
-        container._pendingLiveCandle = liveCandle;
-        if (container._liveFrame == null) {
-            const wait = mobilePerformance ? Math.max(0, 250 - (performance.now() - (container._lastLiveRender || 0))) : 0;
-            container._liveFrame = window.setTimeout(() => requestAnimationFrame(applyLive), wait);
+        });
+        socket.addEventListener("error", () => {
+            if (isCurrent()) {
+                container._marketStatus = "ERROR";
+                window.dispatchEvent(new CustomEvent("market:update", { detail: { status: "ERROR" } }));
+            }
+        });
+        socket.addEventListener("close", () => {
+            if (!isCurrent() || closedBySwitch) return;
+            container._marketStatus = "STALE";
+            const delay = reconnectDelays[Math.min(reconnectAttempt, reconnectDelays.length - 1)];
+            reconnectAttempt += 1;
+            clearTimeout(reconnectTimer);
+            reconnectTimer = window.setTimeout(connectSocket, delay);
+            window.dispatchEvent(new CustomEvent("market:update", { detail: { status: "STALE" } }));
+        });
+    };
+    container._chartStreamCleanup = () => {
+        closedBySwitch = true;
+        clearTimeout(reconnectTimer);
+        clearInterval(container._marketStaleTimer);
+        if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, "chart switch");
+    };
+    clearInterval(container._marketStaleTimer);
+    container._marketStaleTimer = window.setInterval(() => {
+        if (!isCurrent()) return;
+        const stale = Date.now() - (container._lastMarketMessageAt || 0) > SIGNAL_CONFIG.maxDataAgeMs;
+        if (stale && container._marketStatus === "LIVE") {
+            container._marketStatus = "STALE";
+            window.dispatchEvent(new CustomEvent("market:update", { detail: { status: "STALE" } }));
         }
-    });
-    socket.addEventListener("error", () => {
-        if (isCurrent()) console.warn("Binance live chart connection failed");
-    });
-    container._chartSocket = socket;
+    }, 2000);
+    connectSocket();
 }
 
 window.updateChart = updateChart;
+
+const SIGNAL_CONFIG = Object.freeze({
+    minCandles: 26,
+    minProbability: 0.60,
+    minConfidence: 0.42,
+    maxDataAgeMs: 12000,
+    rangePositionEdge: 0.18,
+    levelToleranceAtr: 0.38,
+    maxRangeExpansion: 2.4,
+    statsWindow: 50,
+    calibrationPrior: 8
+});
+
+function clampSignal(value, min = 0, max = 1) {
+    return Math.min(max, Math.max(min, Number(value) || 0));
+}
+
+function sigmoidSignal(value) {
+    return 1 / (1 + Math.exp(-Math.max(-8, Math.min(8, value))));
+}
 
 function updateTradingViewInterval(seconds) {
     const preset = Object.entries({
@@ -621,6 +730,9 @@ const I18N = {
         k_conf: "CONFIDENCE",
         k_acc: "ACCURACY",
         k_market: "MARKET",
+        k_regime: "REGIME",
+        k_reason: "REASON",
+        k_feed: "FEED",
         k_strength: "STRENGTH",
         k_volume: "VOLUME",
         k_time: "TIME",
@@ -748,6 +860,9 @@ const I18N = {
         k_conf: "УВЕРЕННОСТЬ",
         k_acc: "ТОЧНОСТЬ",
         k_market: "РЫНОК",
+        k_regime: "РЕЖИМ",
+        k_reason: "ПРИЧИНА",
+        k_feed: "ПОТОК",
         k_strength: "СИЛА",
         k_volume: "ОБЪЁМ",
         k_time: "ВРЕМЯ",
@@ -1417,6 +1532,7 @@ const I18N = {
 let CURRENT_LANG = "ru";
 
 function t(key) {
+    if (!key) return "";
     const L = I18N[CURRENT_LANG] || I18N.en;
     return (L && key.split(".").reduce((o,k)=>o?.[k], L)) ?? I18N.en?.[key] ?? "";
 }
@@ -1493,11 +1609,13 @@ function applyI18nToDOM() {
 
     // Result keys (left column)
     const rows = Array.from(document.querySelectorAll(".rg2-list .row"));
-    const kOrder = ["k_market","k_strength","k_volume","k_time","k_valid"];
+    const kOrder = ["k_market","k_regime","k_reason","k_feed","k_strength","k_volume","k_time","k_valid"];
     rows.forEach((row, idx)=>{
         const k = row.querySelector(".k");
-        if (!k) return;
-        k.textContent = t(kOrder[idx]);
+        const key = kOrder[idx];
+        if (!k || !key) return;
+        const translated = t(key);
+        if (translated) k.textContent = translated;
     });
     // buttons
     const rep = document.getElementById("sigRepeat");
@@ -2108,11 +2226,48 @@ ensureDefaultModel();
     let signalEntrySyncTimer = null;
     let signalTimers = [];
     let currentTrade = null;
+    let latestLiveDecision = null;
+    let liveDecisionFrame = null;
 
     // Buttons
     q("getSignalBtn")?.addEventListener("click", start);
     q("sigRepeat")?.addEventListener("click", start);
     q("sigReset")?.addEventListener("click", resetAll);
+    window.addEventListener("market:update", () => {
+        if (liveDecisionFrame != null) return;
+        liveDecisionFrame = requestAnimationFrame(() => {
+            liveDecisionFrame = null;
+            latestLiveDecision = getSignalDecision();
+            renderLiveDecision(latestLiveDecision);
+            if (currentTrade) updateOpenTradeMark(currentTrade);
+        });
+    });
+
+    function renderLiveDecision(decision){
+        if (!decision) return;
+        const percent = (value) => Number.isFinite(value) ? `${Math.round(value * 100)}%` : "—";
+        q("sigProbability")?.replaceChildren(percent(decision.probability));
+        q("sigConf")?.replaceChildren(percent(decision.confidence));
+        q("sigAcc")?.replaceChildren(decision.accuracy == null ? "—" : percent(decision.accuracy));
+        q("sigRegime")?.replaceChildren(decision.regime || "—");
+        q("sigReason")?.replaceChildren(decision.reason || "—");
+        q("sigFeedStatus")?.replaceChildren(chartWidget?._marketStatus || "CONNECTING");
+        if (!currentTrade && !document.body.classList.contains("signal-running")) {
+            inlineStatus?.replaceChildren(decision.status === "NO_TRADE"
+                ? `ЖДЁМ • ${decision.reason}`
+                : `${decision.status} • ${percent(decision.probability)}`);
+        }
+    }
+
+    function updateOpenTradeMark(trade){
+        const close = Number(chartWidget?._lastCandle?.close);
+        const entry = Number(trade?.entryPrice);
+        if (!Number.isFinite(close) || !Number.isFinite(entry)) return;
+        const delta = entry ? ((close - entry) / entry) * (trade.isBuy ? 1 : -1) : 0;
+        q("inlineTradeOutcome")?.classList.toggle("is-win", delta >= 0);
+        q("inlineTradeOutcome")?.classList.toggle("is-loss", delta < 0);
+        q("inlineTradeOutcomeText")?.replaceChildren(`LIVE ${delta >= 0 ? "+" : ""}${delta.toFixed(2)}%`);
+    }
 
     function start(){
         const pair  = q("pairField")?.value.trim();
@@ -2147,12 +2302,48 @@ ensureDefaultModel();
     }
 
     function finishSignal(pair){
-        const decision = getSignalDecision();
+        const decision = latestLiveDecision || getSignalDecision();
+        latestLiveDecision = decision;
+        renderLiveDecision(decision);
+        if (decision.status === "NO_TRADE" || decision.isBuy == null) {
+            currentTrade = null;
+            if (inlineStatus) inlineStatus.textContent = `NO TRADE • ${decision.reason}`;
+            q("sigDirection")?.replaceChildren("NO TRADE");
+            q("sigDirection")?.classList.remove("buy", "sell");
+            q("sigPair")?.replaceChildren(pair);
+            q("sigRegime")?.replaceChildren(decision.regime);
+            q("sigReason")?.replaceChildren(decision.reason);
+            q("sigFeedStatus")?.replaceChildren(chartWidget?._marketStatus || "LIVE");
+            if (q("sigResult")) q("sigResult").hidden = false;
+            if (q("sigAnalysis")) q("sigAnalysis").style.display = "none";
+            inlineResult?.setAttribute("hidden", "");
+            chartOverlay?.setAttribute("hidden", "");
+            chartWidget?.classList.remove("signal-active");
+            return;
+        }
         const isBuy = decision.isBuy;
         const direction = isBuy ? "BUY" : "SELL";
         const expiry = Math.max(1, Number(state.expirySeconds) || 60);
-        currentTrade = { pair, isBuy, expiry };
-        if (inlineStatus) inlineStatus.textContent = "СИГНАЛ ПОЛУЧЕН";
+        const entryPrice = Number(chartWidget?._lastCandle?.close);
+        currentTrade = {
+            id: window.crypto?.randomUUID?.() || `signal-${Date.now()}`,
+            pair, isBuy, expiry, entryPrice,
+            decisionSnapshot: { ...decision }
+        };
+        inlineTradeOutcome?.removeAttribute("hidden");
+        inlineTradeOutcomeText?.replaceChildren("LIVE • отслеживание цены");
+        q("sigPair")?.replaceChildren(pair);
+        q("sigTime")?.replaceChildren(state.time || "—");
+        q("sigMarket")?.replaceChildren("BINANCE");
+        q("sigStrength")?.replaceChildren(decision.confidence >= 0.7 ? "HIGH" : "MEDIUM");
+        q("sigVol")?.replaceChildren(decision.features?.volumeRatio >= 1.15 ? "HIGH" : "NORMAL");
+        q("sigRegime")?.replaceChildren(decision.regime);
+        q("sigReason")?.replaceChildren(decision.reason);
+        q("sigFeedStatus")?.replaceChildren(chartWidget?._marketStatus || "LIVE");
+        q("sigValid")?.replaceChildren(new Date(Date.now() + expiry * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+        if (q("sigResult")) q("sigResult").hidden = false;
+        if (q("sigAnalysis")) q("sigAnalysis").style.display = "none";
+        if (inlineStatus) inlineStatus.textContent = `СИГНАЛ ПОЛУЧЕН • ${Math.round(decision.probability * 100)}%`;
         if (directionVisual) {
             directionVisual.classList.toggle("is-buy", isBuy);
             directionVisual.classList.toggle("is-sell", !isBuy);
@@ -2169,6 +2360,19 @@ ensureDefaultModel();
         inlineResult?.removeAttribute("hidden");
         showSignalChart(isBuy, direction, expiry, () => startCountdown(expiry));
         placeSignalMarker(isBuy, expiry);
+        saveResult({
+            schemaVersion: 2,
+            status: decision.status,
+            isBuy,
+            pair,
+            time: state.time,
+            probability: decision.probability,
+            confidence: decision.confidence,
+            accuracy: decision.accuracy,
+            regime: decision.regime,
+            reason: decision.reason,
+            market: "BINANCE"
+        });
     }
 
     function showSignalChart(isBuy, direction, expiry, onComplete){
@@ -2276,12 +2480,19 @@ ensureDefaultModel();
         const container = document.getElementById("tv_chart_container");
         const lastCandle = container?._lastCandle;
         const close = Number(lastCandle?.close);
-        const entry = Number(signalEntryPrice);
-        const isWin = Number.isFinite(close) && Number.isFinite(entry)
-            ? (trade.isBuy ? close >= entry : close <= entry)
-            : (Number(lastCandle?.close) >= Number(lastCandle?.open)) === trade.isBuy;
-
+        const entry = Number(trade.entryPrice ?? signalEntryPrice);
+        const fresh = container?._lastMarketMessageAt
+            ? Date.now() - container._lastMarketMessageAt <= SIGNAL_CONFIG.maxDataAgeMs : false;
+        if (!fresh || !Number.isFinite(close) || !Number.isFinite(entry)) {
+            if (inlineStatus) inlineStatus.textContent = "РЕЗУЛЬТАТ НЕ ЗАФИКСИРОВАН • НЕТ СВЕЖЕЙ ЦЕНЫ";
+            currentTrade = null;
+            signalTimers.push(setTimeout(resetAll, 2200));
+            return;
+        }
+        const isWin = trade.isBuy ? close >= entry : close <= entry;
+        const outcome = isWin ? "win" : "loss";
         recordTradeOutcome({ pair: trade.pair, isBuy: trade.isBuy, isWin });
+        recordSignalStats(trade, outcome, close);
         showTradeOutcome(isWin);
         currentTrade = null;
         signalTimers.push(setTimeout(resetAll, 4800));
@@ -2312,34 +2523,43 @@ ensureDefaultModel();
     });
 
     function getSignalDecision(){
-        const data = document.getElementById("tv_chart_container")?._candleData || [];
-        const recent = data.slice(-26).filter((candle) =>
+        const container = document.getElementById("tv_chart_container");
+        const data = container?._candleData || [];
+        const recent = data.slice(-40).filter((candle) =>
             Number.isFinite(Number(candle.open))
             && Number.isFinite(Number(candle.high))
             && Number.isFinite(Number(candle.low))
             && Number.isFinite(Number(candle.close))
         );
-        if (recent.length < 5) {
-            const last = recent[recent.length - 1];
-            return { isBuy: Number(last?.close) >= Number(last?.open), confidence: 0.5 };
+        const base = {
+            status: "NO_TRADE", isBuy: null, pBuy: 0.5, pSell: 0.5,
+            probability: 0.5, confidence: 0, accuracy: getRollingAccuracy(),
+            regime: "INSUFFICIENT_DATA", reasonCode: "insufficient_data",
+            reason: "Недостаточно подтверждённых свечей", score: 0,
+            generatedAt: Date.now(), dataFreshnessMs: container?._lastMarketMessageAt
+                ? Date.now() - container._lastMarketMessageAt : null
+        };
+        if (recent.length < SIGNAL_CONFIG.minCandles) return base;
+        if (["STALE", "ERROR", "UNSUPPORTED"].includes(container?._marketStatus)) {
+            return { ...base, regime: "UNSAFE", reasonCode: "feed_not_fresh", reason: "Поток рынка неактуален" };
         }
 
         const closes = recent.map((candle) => Number(candle.close));
         const ema = (period) => {
             const smoothing = 2 / (period + 1);
-            return closes.reduce((value, close, index) =>
-                index === 0 ? close : close * smoothing + value * (1 - smoothing), closes[0]);
+            return closes.reduce((value, close, index) => index === 0
+                ? close : close * smoothing + value * (1 - smoothing), closes[0]);
         };
         const fastEma = ema(5);
         const slowEma = ema(13);
-        const latest = recent[recent.length - 1];
-        const previous = recent[recent.length - 2];
-        const twoBack = recent[recent.length - 3];
+        const latest = recent.at(-1);
+        const previous = recent.at(-2);
+        const twoBack = recent.at(-3);
         const latestClose = Number(latest.close);
         const latestOpen = Number(latest.open);
         const latestHigh = Number(latest.high);
         const latestLow = Number(latest.low);
-        const latestRange = Math.max(Number(latest.high) - Number(latest.low), 1e-9);
+        const latestRange = Math.max(latestHigh - latestLow, 1e-9);
         const latestBody = latestClose - latestOpen;
         const absoluteBody = Math.abs(latestBody);
         const upperWick = latestHigh - Math.max(latestOpen, latestClose);
@@ -2359,10 +2579,7 @@ ensureDefaultModel();
         const averageLoss = losses.reduce((sum, value) => sum + value, 0) / 14;
         const relativeStrength = averageLoss ? averageGain / averageLoss : averageGain ? 2 : 1;
         const rsi = 100 - (100 / (1 + relativeStrength));
-        const rangeHigh = Math.max(...recent.slice(-12, -1).map((candle) => Number(candle.high)));
-        const rangeLow = Math.min(...recent.slice(-12, -1).map((candle) => Number(candle.low)));
-        const impulse = (latestClose - closes[closes.length - 5])
-            / Math.max(averageRange, latestClose * 1e-6);
+        const impulse = (latestClose - closes.at(-5)) / Math.max(averageRange, latestClose * 1e-6);
         const bodyStrength = latestBody / latestRange;
         const candleBias = recent.slice(-8).reduce((score, candle) => {
             const body = Number(candle.close) - Number(candle.open);
@@ -2370,21 +2587,17 @@ ensureDefaultModel();
             return score + body / range;
         }, 0) / 8;
         const bullishEngulfing = latestClose > latestOpen
-            && latestOpen <= Number(previous.close)
-            && latestClose >= Number(previous.open);
+            && latestOpen <= Number(previous.close) && latestClose >= Number(previous.open);
         const bearishEngulfing = latestClose < latestOpen
-            && latestOpen >= Number(previous.close)
-            && latestClose <= Number(previous.open);
+            && latestOpen >= Number(previous.close) && latestClose <= Number(previous.open);
         const bullishReversal = Number(previous.close) < Number(twoBack.close)
-            && latestClose > Number(previous.close)
-            && latestClose > Number(previous.open);
+            && latestClose > Number(previous.close) && latestClose > Number(previous.open);
         const bearishReversal = Number(previous.close) > Number(twoBack.close)
-            && latestClose < Number(previous.close)
-            && latestClose < Number(previous.open);
-        const bullishPinBar = lowerWick > Math.max(absoluteBody * 1.8, latestRange * 0.35)
-            && latestClose >= latestLow + latestRange * 0.6;
-        const bearishPinBar = upperWick > Math.max(absoluteBody * 1.8, latestRange * 0.35)
-            && latestClose <= latestLow + latestRange * 0.4;
+            && latestClose < Number(previous.close) && latestClose < Number(previous.open);
+        const bullishPinBar = lowerWick >= Math.max(absoluteBody * 1.6, latestRange * 0.35)
+            && latestClose >= latestLow + latestRange * 0.58;
+        const bearishPinBar = upperWick >= Math.max(absoluteBody * 1.6, latestRange * 0.35)
+            && latestClose <= latestHigh - latestRange * 0.58;
         const bullishPattern = bullishEngulfing || bullishReversal || bullishPinBar;
         const bearishPattern = bearishEngulfing || bearishReversal || bearishPinBar;
         const levelWindow = recent.slice(-16, -1);
@@ -2393,78 +2606,90 @@ ensureDefaultModel();
         const rangeSize = Math.max(resistance - support, 1e-9);
         const rangeMarket = rangeSize <= averageRange * 8
             && Math.abs(fastEma - slowEma) <= averageRange * 1.25;
-        const levelTolerance = Math.max(averageRange * 0.45, latestClose * 0.00035);
-        const rangePosition = (latestClose - support) / rangeSize;
-        const nearSupport = rangePosition <= 0.3
-            || latestLow <= support + levelTolerance
-            || latestClose <= support + levelTolerance;
-        const nearResistance = rangePosition >= 0.7
-            || latestHigh >= resistance - levelTolerance
-            || latestClose >= resistance - levelTolerance;
+        const levelTolerance = Math.max(averageRange * SIGNAL_CONFIG.levelToleranceAtr, latestClose * 0.00025);
+        const rangePosition = clampSignal((latestClose - support) / rangeSize, 0, 1);
+        const nearSupport = rangePosition <= SIGNAL_CONFIG.rangePositionEdge
+            || latestLow <= support + levelTolerance;
+        const nearResistance = rangePosition >= 1 - SIGNAL_CONFIG.rangePositionEdge
+            || latestHigh >= resistance - levelTolerance;
         const rejectedSupport = nearSupport && lowerWick >= Math.max(absoluteBody, latestRange * 0.3)
-            && latestClose > latestOpen;
+            && latestClose > latestOpen && latestClose > support;
         const rejectedResistance = nearResistance && upperWick >= Math.max(absoluteBody, latestRange * 0.3)
-            && latestClose < latestOpen;
-        const breakoutUp = latestClose > resistance && latestClose > latestOpen && volumeRatio >= 1.05;
-        const breakoutDown = latestClose < support && latestClose < latestOpen && volumeRatio >= 1.05;
-        const localAi = localSignalReasoner({
-            rangeMarket,
-            rangePosition,
-            rsi,
-            volumeRatio,
-            impulse,
-            bodyStrength,
-            fastEma,
-            slowEma,
-            bullishPattern,
-            bearishPattern,
-            rejectedSupport,
-            rejectedResistance,
-            breakoutUp,
-            breakoutDown
-        });
-
+            && latestClose < latestOpen && latestClose < resistance;
+        const breakoutUp = latestClose > resistance + levelTolerance
+            && latestClose > latestOpen && volumeRatio >= 1.12;
+        const breakoutDown = latestClose < support - levelTolerance
+            && latestClose < latestOpen && volumeRatio >= 1.12;
+        const expansion = latestRange / Math.max(averageRange, 1e-9);
+        const unsafe = expansion > SIGNAL_CONFIG.maxRangeExpansion
+            || volumeRatio < 0.35
+            || !Number.isFinite(rsi);
+        const trendBias = Math.sign(fastEma - slowEma);
+        const trendScore = trendBias * 2
+            + Math.sign(impulse) * 1.7
+            + Math.sign(candleBias) * 1
+            + Math.sign(bodyStrength) * (volumeRatio >= 0.9 ? 1 : 0.4)
+            + (rsi < 35 ? 1 : rsi > 65 ? -1 : Math.sign(rsi - 50) * 0.5)
+            + (bullishPattern ? 1.5 : bearishPattern ? -1.5 : 0)
+            + (breakoutUp ? 2.5 : breakoutDown ? -2.5 : 0);
+        const rangeScore = (rejectedSupport ? 4 : 0)
+            - (rejectedResistance ? 4 : 0)
+            + (nearSupport ? 1.5 : 0)
+            - (nearResistance ? 1.5 : 0)
+            + (rsi <= 42 ? 1.5 : rsi >= 58 ? -1.5 : 0)
+            + (bullishPattern ? 1 : bearishPattern ? -1 : 0);
+        const score = rangeMarket && !breakoutUp && !breakoutDown ? rangeScore : trendScore;
+        const regime = unsafe ? "UNSAFE" : rangeMarket && !breakoutUp && !breakoutDown ? "RANGE" : "TREND";
+        const conflict = Math.abs(trendScore) < 1.2 && Math.abs(rangeScore) < 1.5;
+        const boundaryBlock = rangeMarket && !breakoutUp && !breakoutDown
+            && !(nearSupport && rejectedSupport) && !(nearResistance && rejectedResistance);
+        const exhaustionBlock = nearResistance && !breakoutUp && score > 0
+            || nearSupport && !breakoutDown && score < 0;
+        const rawPBuy = sigmoidSignal(score / 2.6);
+        const penalty = (unsafe ? 0.12 : 0)
+            + (volumeRatio < 0.7 ? 0.06 : 0)
+            + (expansion > 1.8 ? 0.06 : 0)
+            + (conflict ? 0.08 : 0);
+        const pBuy = clampSignal(0.5 + (rawPBuy - 0.5) * (1 - penalty));
+        const pSell = 1 - pBuy;
+        const isBuy = pBuy >= pSell;
+        const probability = Math.max(pBuy, pSell);
+        const totalSignalWeight = 13.2;
+        const confidence = clampSignal(Math.abs(score) / totalSignalWeight);
+        const common = {
+            isBuy, pBuy, pSell, probability, confidence, accuracy: getRollingAccuracy(),
+            score, regime, generatedAt: Date.now(), support, resistance, rangePosition,
+            features: { rsi, impulse, volumeRatio, expansion, nearSupport, nearResistance,
+                rejectedSupport, rejectedResistance, breakoutUp, breakoutDown },
+            dataFreshnessMs: container?._lastMarketMessageAt
+                ? Date.now() - container._lastMarketMessageAt : null
+        };
+        if (unsafe) return { ...common, status: "NO_TRADE", isBuy: null, reasonCode: "unsafe_market", reason: "Рынок слишком резкий или данные нестабильны" };
+        if (boundaryBlock) return { ...common, status: "NO_TRADE", isBuy: null, reasonCode: "range_no_rejection", reason: "В боковике нет подтверждённого отбоя от границы" };
+        if (exhaustionBlock) return { ...common, status: "NO_TRADE", isBuy: null, reasonCode: "exhaustion", reason: "Цена у границы без подтверждённого продолжения" };
+        if (conflict || probability < SIGNAL_CONFIG.minProbability || confidence < SIGNAL_CONFIG.minConfidence) {
+            return { ...common, status: "NO_TRADE", isBuy: null, reasonCode: "weak_edge", reason: "Преимущество setup недостаточно сильное" };
+        }
         if (rangeMarket && !breakoutUp && !breakoutDown) {
-            const rangeScore = (nearSupport ? 2.5 : 0)
-                - (nearResistance ? 2.5 : 0)
-                + (rsi <= 42 ? 2 : rsi >= 58 ? -2 : 0)
-                + (rejectedSupport ? 2.5 : 0)
-                - (rejectedResistance ? 2.5 : 0)
-                + (bullishPattern ? 1.5 : bearishPattern ? -1.5 : 0);
-            const combinedRangeScore = rangeScore + localAi.score * 1.25;
-            if (Math.abs(combinedRangeScore) >= 2.5) {
-                return {
-                    isBuy: combinedRangeScore > 0,
-                    confidence: Math.min(1, 0.58 + Math.abs(combinedRangeScore) / 14)
-                };
+            const rangeDirectionAllowed = (isBuy && nearSupport && rejectedSupport)
+                || (!isBuy && nearResistance && rejectedResistance);
+            if (!rangeDirectionAllowed) {
+                return { ...common, status: "NO_TRADE", isBuy: null, reasonCode: "wrong_range_side", reason: "Направление не подтверждено границей боковика" };
             }
         }
+        const reason = rangeMarket
+            ? (isBuy ? "BUY от поддержки после rejection" : "SELL от сопротивления после rejection")
+            : (isBuy ? "TREND continuation вверх" : "TREND continuation вниз");
+        return { ...common, status: isBuy ? "BUY" : "SELL", reasonCode: rangeMarket ? "range_rejection" : "trend_alignment", reason };
+    }
 
-        const votes = [];
-        const vote = (value, weight) => {
-            if (value > 0) votes.push({ direction: 1, weight });
-            if (value < 0) votes.push({ direction: -1, weight });
-        };
-        vote(Math.sign(fastEma - slowEma), 2);
-        vote(Math.sign(impulse), 2);
-        vote(candleBias, 1);
-        vote(bodyStrength * volumeRatio, 1.5);
-        vote(rsi < 35 ? 1 : rsi > 65 ? -1 : Math.sign(rsi - 50), 1);
-        vote(bullishPattern ? 1 : bearishPattern ? -1 : 0, 2);
-        vote(breakoutUp ? 1 : breakoutDown ? -1 : 0, 2.5);
-        if (rangeMarket) {
-            vote(rejectedSupport ? 1 : rejectedResistance ? -1 : 0, 3);
-        }
-        vote(localAi.score, 2.5);
-
-        const weightedScore = votes.reduce((sum, item) => sum + item.direction * item.weight, 0);
-        const totalWeight = votes.reduce((sum, item) => sum + item.weight, 0);
-        const agreement = totalWeight ? Math.abs(weightedScore) / totalWeight : 0;
-        const direction = weightedScore === 0 ? (latestClose >= latestOpen ? 1 : -1) : Math.sign(weightedScore);
-        return {
-            isBuy: direction > 0,
-            confidence: Math.min(1, agreement + (rangeMarket && (rejectedSupport || rejectedResistance) ? 0.12 : 0))
-        };
+    function getRollingAccuracy(){
+        try {
+            const stored = JSON.parse(localStorage.getItem(SIGNAL_STATS_KEY) || "[]");
+            const valid = Array.isArray(stored) ? stored.filter(item => item.outcome === "win" || item.outcome === "loss").slice(-SIGNAL_CONFIG.statsWindow) : [];
+            if (!valid.length) return null;
+            return valid.filter(item => item.outcome === "win").length / valid.length;
+        } catch (_) { return null; }
     }
 
     function localSignalReasoner(features){
@@ -2503,6 +2728,8 @@ ensureDefaultModel();
         return getSignalDecision().isBuy;
     }
 
+    window.__getSignalDecision = getSignalDecision;
+
     function formatDuration(total){
         const hours = Math.floor(total / 3600);
         const minutes = Math.floor((total % 3600) / 60);
@@ -2512,62 +2739,27 @@ ensureDefaultModel();
     }
 
     function showResult(pair, time){
-        // demo data
-        const dir  = Math.random() < 0.5 ? "DOWN" : "UP";
-        const conf = rand(72, 96);
-        const acc  = rand(40, 88);
-
-        const strengthCode = (Math.random() < 0.65 ? "High" : "Medium");
-        const volCode = ["Low","Medium","High"][rand(0,2)];
-
-        const market = /OTC/i.test(pair) ? "OTC" : "—";
-
-        let valid = t("v_dash");
-        try{
-            const secs = state.expirySeconds;
-            if (secs) {
-                const d = new Date(Date.now() + secs*1000);
-                valid = d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
-            }
-        }catch(_){}
-
-        // direction + icon
-        const dirEl = document.getElementById("sigDirection");
-        const isBuy = dir === "UP";
-        if (dirEl) {
-            dirEl.textContent = i18nFormatDirection(isBuy);
-            dirEl.classList.toggle("buy",  isBuy);
-            dirEl.classList.toggle("sell", !isBuy);
+        const decision = getSignalDecision();
+        latestLiveDecision = decision;
+        renderLiveDecision(decision);
+        if (decision.status === "NO_TRADE") {
+            if (inlineStatus) inlineStatus.textContent = `NO TRADE • ${decision.reason}`;
+            return decision;
         }
-        const iconBox = document.getElementById("sigDirIcon");
-        if (iconBox) iconBox.innerHTML = isBuy ? BUY_SVG : SELL_SVG;
-
-        // values (localized)
-        document.getElementById("sigMarket").textContent   = i18nMarketOTC(market==="OTC");
-        document.getElementById("sigConf").textContent     = conf + "%";
-        document.getElementById("sigTime").textContent     = time;
-        document.getElementById("sigStrength").textContent = i18nFormatStrength(strengthCode);
-        document.getElementById("sigPair").textContent     = pair;
-        document.getElementById("sigValid").textContent    = valid;
-        document.getElementById("sigAcc").textContent      = acc + "%";
-        document.getElementById("sigVol").textContent      = i18nFormatVolume(volCode);
-
-        // show result
-        document.getElementById("sigAnalysis").style.display = "none";
-        document.getElementById("sigResult").hidden = false;
-
-        // save for restore
-        saveResult({
-            isBuy,
-            pair,
-            conf: conf + "%",
-            acc:  acc  + "%",
-            market,
-            strCode: strengthCode,
-            volCode,
-            time,
-            valid
-        });
+        const valid = state.expirySeconds
+            ? new Date(Date.now() + state.expirySeconds * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            : "—";
+        q("sigPair")?.replaceChildren(pair);
+        q("sigTime")?.replaceChildren(time);
+        q("sigValid")?.replaceChildren(valid);
+        q("sigMarket")?.replaceChildren(/OTC/i.test(pair) ? "OTC" : "BINANCE");
+        q("sigStrength")?.replaceChildren(decision.confidence >= 0.7 ? "HIGH" : "MEDIUM");
+        q("sigVol")?.replaceChildren(decision.features?.volumeRatio >= 1.15 ? "HIGH" : "NORMAL");
+        q("sigAnalysis")?.style.setProperty("display", "none");
+        if (q("sigResult")) q("sigResult").hidden = false;
+        saveResult({ schemaVersion: 2, status: decision.status, isBuy: decision.isBuy, pair, time, valid,
+            probability: decision.probability, confidence: decision.confidence, accuracy: decision.accuracy });
+        return decision;
     }
 
     function resetAll(){
@@ -2634,8 +2826,6 @@ ensureDefaultModel();
         checkReady();
     }
 
-
-    function rand(a,b){ return Math.floor(a + Math.random()*(b-a+1)); }
 })();
 
 // ===============================================
@@ -2653,8 +2843,7 @@ function setSigStepsState(currentIndex){
     });
     if(_sigBar){
         const ratio = Math.min(1, currentIndex / _sigSteps.length);
-        const jitter = Math.random()*1.2;
-        _sigBar.style.width = Math.min(100, ratio*100 + jitter) + "%";
+        _sigBar.style.width = `${Math.round(ratio * 100)}%`;
     }
 }
 
