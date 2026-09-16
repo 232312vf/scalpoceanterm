@@ -136,28 +136,6 @@
                     </div>
                 </div>
                 </div>
-                <section class="info-faq" aria-label="Информация о терминале">
-                <div class="info-faq-item">
-                    <button class="faq-question" type="button" onclick="toggleFAQ(this)" aria-expanded="false">
-                        <span>Какие технологии мы используем?</span>
-                        <span class="faq-chevron" aria-hidden="true">⌄</span>
-                    </button>
-                    <div class="faq-answer">
-                        Мы используем два мощных AI-инструмента — Claude Opus 5 и GPT-5.6 в связке с более чем 20 индикаторами и паттернами, которые анализируют график в реальном времени через API вашей платформы!
-                    </div>
-                </div>
-                <div class="info-faq-item">
-                    <button class="faq-question" type="button" onclick="toggleFAQ(this)" aria-expanded="false">
-                        <span>Как проверить не обман ли это?</span>
-                        <span class="faq-chevron" aria-hidden="true">⌄</span>
-                    </button>
-                    <div class="faq-answer">
-                        Специально для того чтобы нам доверяли на деле, а не на красивых словах, мы сделали проверку нашего инструмента в реальном времени на рабочей платформе С НАШИМ СТРАХОВЫМ ДЕПОЗИТОМ!<br><br>
-                        Для того чтобы убедиться что бот реально работает, а только потом начинать с нами работу - напиши нашему хелперу и он выделит ближайшее время для тебя и проведёт с тобой эту проверку в удобное для тебя время
-                        <a class="verification-link" href="https://t.me/m/-ioTgpBJMjVi" target="_blank" rel="noopener noreferrer">ЗАКАЗАТЬ ПРОВЕРКУ В РЕАЛЬНОМ ВРЕМЕНИ</a>
-                    </div>
-                </div>
-                </section>
             </div>
         </div>
 
@@ -181,6 +159,34 @@
                 </div>
                 <div class="history-list" id="tradeHistoryList">
                     <div class="history-empty" id="historyEmpty">Завершённые сделки появятся здесь</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="info-faq faq-section-tab" aria-label="Часто задаваемые вопросы">
+            <div class="faq-tab-heading">
+                <span class="panel-eyebrow">HELP CENTER</span>
+                <h2>FAQ</h2>
+                <p>Ответы на основные вопросы о терминале</p>
+            </div>
+            <div class="info-faq-item">
+                <button class="faq-question" type="button" onclick="toggleFAQ(this)" aria-expanded="false">
+                    <span>Какие технологии мы используем?</span>
+                    <span class="faq-chevron" aria-hidden="true">⌄</span>
+                </button>
+                <div class="faq-answer">
+                    Мы используем два мощных AI-инструмента — Claude Opus 5 и GPT-5.6 в связке с более чем 20 индикаторами и паттернами, которые анализируют график в реальном времени через API вашей платформы!
+                </div>
+            </div>
+            <div class="info-faq-item">
+                <button class="faq-question" type="button" onclick="toggleFAQ(this)" aria-expanded="false">
+                    <span>Как проверить не обман ли это?</span>
+                    <span class="faq-chevron" aria-hidden="true">⌄</span>
+                </button>
+                <div class="faq-answer">
+                    Специально для того чтобы нам доверяли на деле, а не на красивых словах, мы сделали проверку нашего инструмента в реальном времени на рабочей платформе С НАШИМ СТРАХОВЫМ ДЕПОЗИТОМ!<br><br>
+                    Для того чтобы убедиться что бот реально работает, а только потом начинать с нами работу - напиши нашему хелперу и он выделит ближайшее время для тебя и проведёт с тобой эту проверку в удобное для тебя время
+                    <a class="verification-link" href="https://t.me/m/-ioTgpBJMjVi" target="_blank" rel="noopener noreferrer">ЗАКАЗАТЬ ПРОВЕРКУ В РЕАЛЬНОМ ВРЕМЕНИ</a>
                 </div>
             </div>
         </section>
@@ -318,6 +324,21 @@
 
             </div>
         </div>
+
+        <nav class="bottom-tabs" aria-label="Разделы приложения">
+            <button class="bottom-tab is-active" id="terminalTab" type="button" aria-selected="true">
+                <span class="bottom-tab-icon" aria-hidden="true">⌁</span>
+                <span>Терминал</span>
+            </button>
+            <button class="bottom-tab" id="tradesTab" type="button" aria-selected="false">
+                <span class="bottom-tab-icon" aria-hidden="true">↗</span>
+                <span>Мои сделки</span>
+            </button>
+            <button class="bottom-tab" id="faqTab" type="button" aria-selected="false">
+                <span class="bottom-tab-icon" aria-hidden="true">?</span>
+                <span>FAQ</span>
+            </button>
+        </nav>
     </main>
 
     <section class="faq-section legacy-faq">
