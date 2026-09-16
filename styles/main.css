@@ -6,8 +6,8 @@
 /* =========================
    Base
 ========================= */
-html,body{width:100%;min-height:100%;font-family:Arial, sans-serif;background:#020407;color:#e7edf4}
-html{-webkit-tap-highlight-color:transparent}
+html,body{width:100%;min-height:100%;font-family:Arial, sans-serif;background:#020407;color:#e7edf4;overflow-x:hidden;overflow-y:auto}
+html{-webkit-tap-highlight-color:transparent;overscroll-behavior-x:none}
 button,a,input,[role="button"]{touch-action:manipulation}
 .app-wrapper{
     min-height:100vh;
@@ -15,7 +15,7 @@ button,a,input,[role="button"]{touch-action:manipulation}
     min-height:100dvh;
     position:relative;
     isolation:isolate;
-    overflow:hidden;
+    overflow:visible;
     background:
         radial-gradient(circle at 50% 45%, rgba(25,42,58,.18), transparent 38%),
         #020407;
@@ -27,7 +27,7 @@ button,a,input,[role="button"]{touch-action:manipulation}
 }
 @media (max-width:700px){
     .app-wrapper{
-        min-height:var(--viewport-height, 100dvh);
+        min-height:100dvh;
     }
 }
 
@@ -244,7 +244,7 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 .panel-eyebrow{display:block;color:#8ea1b7;font-size:11px;letter-spacing:1.3px;margin-bottom:4px}
 .panel-heading h2{font-size:20px;color:#fff}
 .live-badge{font-size:11px;color:#6df0bd;border:1px solid rgba(109,240,189,.45);border-radius:999px;padding:5px 9px}
-.chart-widget{height:auto;min-height:0;overflow:hidden;border-radius:10px;flex:1;background:#101722;position:relative}
+.chart-widget{height:auto;min-height:0;overflow:hidden;border-radius:10px;flex:1;background:#101722;position:relative;touch-action:pan-y;overscroll-behavior-x:contain;overscroll-behavior-y:auto}
 .chart-api-overlay{
     position:absolute;
     inset:0;
@@ -540,7 +540,7 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 
     .app-wrapper{
         width:100%;
-        min-height:var(--viewport-height,100dvh);
+        min-height:100dvh;
         padding-top:max(12px,env(safe-area-inset-top));
         padding-right:max(12px,env(safe-area-inset-right));
         padding-bottom:max(12px,env(safe-area-inset-bottom));
@@ -1623,7 +1623,7 @@ body.signal-running .glass-signal{display:none}
 /* Final mobile composition: compact hero, readable chart and touch-friendly controls. */
 @media (max-width:700px){
     .app-wrapper{
-        overflow-x:hidden;
+        overflow:visible;
         padding-top:max(10px,env(safe-area-inset-top));
         padding-right:max(12px,env(safe-area-inset-right));
         padding-bottom:max(16px,env(safe-area-inset-bottom));
@@ -2188,4 +2188,37 @@ body.signal-running .glass-signal{display:none}
     0%   { box-shadow: 0 0 0 0   rgba(255,77,79,.6); transform: scale(1); }
     70%  { box-shadow: 0 0 0 10px rgba(255,77,79,0); transform: scale(1.05); }
     100% { box-shadow: 0 0 0 0   rgba(255,77,79,0); transform: scale(1); }
+}
+
+/* Mobile performance: keep the luminous look without animating large blurred layers. */
+@media (max-width:700px){
+    .app-wrapper::before{
+        filter:none;
+        animation:none;
+        opacity:.08;
+    }
+    .app-wrapper::after{
+        filter:none;
+        animation:none;
+    }
+    .glass-card,
+    .terminal-sidebar .glass-card,
+    .info-faq-item,
+    .bottom-tabs{
+        backdrop-filter:none;
+        -webkit-backdrop-filter:none;
+    }
+    .chart-api-overlay,
+    .signal-chart-overlay{
+        backdrop-filter:none;
+        -webkit-backdrop-filter:none;
+    }
+    .chart-widget.signal-active>div:not(.signal-chart-overlay):not(.chart-api-overlay){
+        filter:none;
+        transform:none;
+    }
+    .live-badge,
+    .main-heading .terminal-logo-hero{
+        animation:none;
+    }
 }
