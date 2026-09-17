@@ -80,6 +80,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (telegramWebApp) {
         telegramWebApp.ready();
         if (!telegramWebApp.isExpanded) telegramWebApp.expand();
+
+        // Настоящий полноэкранный режим (Bot API 8.0+) + тема оформления
+        try {
+            telegramWebApp.disableVerticalSwipes?.();
+            telegramWebApp.setHeaderColor?.("#020407");
+            telegramWebApp.setBackgroundColor?.("#020407");
+            Promise.resolve(telegramWebApp.requestFullscreen?.()).catch(() => {});
+        } catch (_) {}
     }
 
     document.documentElement.style.overflowX = "hidden";
