@@ -408,25 +408,33 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 .inline-signal-result.is-waiting{position:absolute;inset:0;display:block;z-index:0}
 .signal-direction-visual.is-waiting{
     position:absolute;inset:0;width:auto;height:auto;margin:0;
-    color:#9fb0c2;
-    filter:drop-shadow(0 0 18px rgba(159,176,194,.18));
+    color:#c9d3e4;
+    opacity:.78;
+    filter:drop-shadow(0 0 16px rgba(223,230,255,.14));
     animation:signalDirectionIn .75s cubic-bezier(.22,1,.36,1) both,waitVisualBreathe 3.6s ease-in-out infinite;
 }
 .inline-signal-panel.is-waiting .inline-signal-status{
     position:relative;z-index:2;
     text-shadow:0 2px 14px rgba(0,0,0,.92),0 0 30px rgba(0,0,0,.8);
 }
-.wait-band{fill:rgba(255,255,255,.05)}
+.wait-band{fill:rgba(255,255,255,.022);stroke:rgba(255,255,255,.065);stroke-width:1}
 .wait-range{animation:waitRangeSway 3.6s ease-in-out infinite}
 /* В фазе ожидания показываем только анимацию боковика, без таймера/подписи выдачи */
 .inline-signal-result.is-waiting>.inline-signal-time,
 .inline-signal-result.is-waiting>.inline-signal-issued,
 .inline-signal-result.is-waiting>.inline-signal-next,
 .inline-signal-result.is-waiting>.inline-trade-outcome{display:none}
-.wc-body.wc-bull{fill:#16c79a}
-.wc-body.wc-bear{fill:#f04f5f}
-.wc-wick.wc-bull{stroke:#16c79a;stroke-width:4;stroke-linecap:round}
-.wc-wick.wc-bear{stroke:#f04f5f;stroke-width:4;stroke-linecap:round}
+/* Свечи ожидания — белый + серо-металлический premium-шейд */
+.wc-body{stroke:rgba(255,255,255,.3);stroke-width:1}
+.wc-body.wc-light{fill:url(#waitCandleWhite)}
+.wc-body.wc-steel{fill:url(#waitCandleSteel)}
+.wc-wick.wc-light{stroke:#eef2f7;stroke-width:4;stroke-linecap:round}
+.wc-wick.wc-steel{stroke:#b7c0ce;stroke-width:4;stroke-linecap:round}
+/* Металлическая глубина: мягкое оттенение края тела */
+.wc-body{
+    filter:drop-shadow(0 1px 0 rgba(255,255,255,.32)) drop-shadow(0 -1px 0 rgba(0,0,0,.14));
+    opacity:.92;
+}
 .wait-candle{
     opacity:0;
     transform-box:fill-box;
@@ -473,7 +481,7 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
     font-weight:800;
     letter-spacing:.08em;
     text-align:center;
-    animation:signalStatusPulse 1.2s ease-in-out infinite;
+    /* без пульсации: надписи не мигают */
 }
 .inline-signal-result{display:flex;flex-direction:column;align-items:center;text-align:center}
 .inline-signal-result[hidden]{display:none}
@@ -490,7 +498,6 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 .inline-signal-issued{margin-top:12px;color:#aeb7c5;font-size:12px;font-weight:600}
 .inline-signal-next{max-width:300px;margin-top:22px;color:#aeb7c5;font-size:15px;font-weight:700;line-height:1.45;text-align:center}
 @keyframes signalPanelIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-@keyframes signalStatusPulse{0%,100%{opacity:.55}50%{opacity:1}}
 @keyframes signalLineDraw{to{stroke-dashoffset:0}}
 @keyframes signalTimerGlow{0%,100%{color:#f4f7fb;text-shadow:0 0 0 rgba(85,224,181,0)}50%{color:#55e0b5;text-shadow:0 0 18px rgba(85,224,181,.72)}}
 .terminal-sidebar{display:flex;flex-direction:column;min-width:0;border-radius:16px}
