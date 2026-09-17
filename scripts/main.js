@@ -200,6 +200,14 @@ function restoreState() {
         state.expirySeconds = Number.isFinite(s.expirySeconds) ? s.expirySeconds : null;
         state.model = s.model ?? null;
 
+        // Миграция: пресет экспирации M3 (3 мин) заменён на M2 (2 мин)
+        if (state.time === "M3" || state.expiry === "M3" || state.expirySeconds === 180) {
+            state.time = "M2";
+            state.expiry = "M2";
+            state.expirySeconds = 120;
+            saveState();
+        }
+
         const setVal = (id, v) => { const el = document.getElementById(id); if (el && v != null) setFieldValue(el, v); };
         setVal("pairField",  state.pair);
         setVal("timeField",  state.time);
@@ -494,7 +502,7 @@ function updateChart(symbol, timeframe, forceReload = false) {
     if (!container || !window.LightweightCharts) return;
     const mobilePerformance = window.matchMedia("(max-width: 700px)").matches;
     const intervalMap = {
-        S1: "1", S30: "1", M1: "1", M3: "3", M5: "5", M15: "15", M30: "30",
+        S1: "1", S30: "1", M1: "1", M2: "1", M3: "3", M5: "5", M15: "15", M30: "30",
         H1: "60", H4: "240", D1: "D"
     };
     const interval = intervalMap[String(timeframe).toUpperCase()] || "1";
@@ -753,7 +761,7 @@ function sigmoidSignal(value) {
 
 function updateTradingViewInterval(seconds) {
     const preset = Object.entries({
-        S30: 30, M1: 60, M3: 180,
+        S30: 30, M1: 60, M2: 120,
         M5: 300, M30: 1800, H1: 3600, H4: 14400
     }).find(([, value]) => value === seconds);
     updateChart(state.pair || "BTC/USDT", preset ? preset[0] : "M1");
@@ -2121,7 +2129,7 @@ ensureDefaultModel();
     const PRESETS = [
         { id:"S30", label:"S30", display:"30 СЕК", seconds:30 },
         { id:"M1",  label:"M1",  display:"1 МИН", seconds:60 },
-        { id:"M3",  label:"M3",  display:"3 МИН", seconds:180 },
+        { id:"M2",  label:"M2",  display:"2 МИН", seconds:120 },
         { id:"M5",  label:"M5",  display:"5 МИН", seconds:300 },
         { id:"M30", label:"M30", display:"30 МИН", seconds:1800 },
         { id:"H1",  label:"H1",  display:"1 ЧАС", seconds:3600 },
