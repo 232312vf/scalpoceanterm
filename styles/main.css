@@ -399,6 +399,30 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 @keyframes signalTimerSell{0%,100%{color:#f4f7fb;text-shadow:0 0 0 rgba(255,79,95,0)}50%{color:#ff4f5f;text-shadow:0 0 18px rgba(255,79,95,.9)}}
 @keyframes signalBuyPulse{0%,100%{filter:drop-shadow(0 0 7px rgba(85,224,181,.25))}50%{filter:drop-shadow(0 0 18px rgba(85,224,181,.72))}}
 @keyframes signalSellPulse{0%,100%{filter:drop-shadow(0 0 7px rgba(255,79,95,.25))}50%{filter:drop-shadow(0 0 18px rgba(255,79,95,.78))}}
+
+/* Анимация ожидания открытия свечи: боковик из красных/зелёных свечей */
+.signal-wait-visual{display:none}
+.signal-direction-visual.is-waiting .signal-wait-visual{display:block}
+.signal-direction-visual.is-waiting .signal-direction-svg{display:none}
+.wait-range-line{stroke:rgba(255,255,255,.16);stroke-width:1.5;stroke-dasharray:5 7;stroke-linecap:round}
+.wc-body.wc-bull{fill:#16c79a}
+.wc-body.wc-bear{fill:#f04f5f}
+.wc-wick.wc-bull{stroke:#16c79a;stroke-width:2;stroke-linecap:round}
+.wc-wick.wc-bear{stroke:#f04f5f;stroke-width:2;stroke-linecap:round}
+.wait-candle{
+    opacity:0;
+    animation:waitCandlePop 2.4s ease-in-out infinite;
+    animation-delay:calc(var(--i)*.22s);
+}
+@keyframes waitCandlePop{
+    0%{opacity:0;transform:translateY(8px)}
+    16%{opacity:1;transform:translateY(0)}
+    70%{opacity:1;transform:translateY(0)}
+    100%{opacity:0;transform:translateY(-5px)}
+}
+@media (prefers-reduced-motion:reduce){
+    .wait-candle{animation:none;opacity:1;transform:none}
+}
 @keyframes signalDirectionIn{to{opacity:1;transform:scale(1) translateY(0)}}
 @keyframes signalTextIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes signalEntryIn{from{opacity:0;transform:scaleX(.3)}to{opacity:1;transform:scaleX(1)}}

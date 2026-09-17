@@ -2429,11 +2429,13 @@ ensureDefaultModel();
             const waitMs = msUntilNextCandleOpen() + 350;
             if (waitMs > 600) {
                 const fireAt = new Date(Date.now() + waitMs - 350);
-                if (inlineStatus) inlineStatus.textContent = `ОЖИДАНИЕ ОТКРЫТИЯ СВЕЧИ • ${fmtClock(fireAt)}`;
+                if (inlineStatus) inlineStatus.textContent = `ОЖИДАНИЕ ОТКРЫТИЯ СВЕЧИ ${fmtClock(fireAt)}`;
+                directionVisual?.classList.add("is-waiting");
                 signalTimers.push(setTimeout(() => finishSignal(pair, true), waitMs));
                 return;
             }
         }
+        directionVisual?.classList.remove("is-waiting");
         const decision = getSignalDecision();
         latestLiveDecision = decision;
         renderLiveDecision(decision);

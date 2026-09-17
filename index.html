@@ -127,10 +127,22 @@
                     >Сменить пару</button>
                     <div class="inline-signal-result" id="inlineSignalResult" hidden>
                         <div class="signal-direction-visual" id="signalDirectionVisual" aria-label="Направление сигнала">
-                            <svg viewBox="0 0 220 140" focusable="false" aria-hidden="true">
+                            <svg class="signal-direction-svg" viewBox="0 0 220 140" focusable="false" aria-hidden="true">
                                 <defs><marker id="inlineSignalArrow" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="M0 0L5 2.5L0 5Z" fill="currentColor"/></marker></defs>
                                 <path class="signal-visual-bars" d="M35 118V92M70 118V72M105 118V82M140 118V48M175 118V30"/>
                                 <path class="signal-visual-line" marker-end="url(#inlineSignalArrow)" d="M20 100L55 80L82 94L112 58L142 66L198 24"/>
+                            </svg>
+                            <svg class="signal-wait-visual" viewBox="0 0 220 140" focusable="false" aria-hidden="true">
+                                <line class="wait-range-line" x1="10" y1="70" x2="210" y2="70"/>
+                                <g class="wait-candle" style="--i:0"><line class="wc-wick wc-bull" x1="18" y1="61" x2="18" y2="83"/><rect class="wc-body wc-bull" x="13" y="66" width="10" height="12" rx="2"/></g>
+                                <g class="wait-candle" style="--i:1"><line class="wc-wick wc-bear" x1="41" y1="65" x2="41" y2="87"/><rect class="wc-body wc-bear" x="36" y="70" width="10" height="12" rx="2"/></g>
+                                <g class="wait-candle" style="--i:2"><line class="wc-wick wc-bull" x1="64" y1="59" x2="64" y2="83"/><rect class="wc-body wc-bull" x="59" y="64" width="10" height="14" rx="2"/></g>
+                                <g class="wait-candle" style="--i:3"><line class="wc-wick wc-bear" x1="87" y1="66" x2="87" y2="89"/><rect class="wc-body wc-bear" x="82" y="71" width="10" height="13" rx="2"/></g>
+                                <g class="wait-candle" style="--i:4"><line class="wc-wick wc-bull" x1="110" y1="58" x2="110" y2="83"/><rect class="wc-body wc-bull" x="105" y="63" width="10" height="15" rx="2"/></g>
+                                <g class="wait-candle" style="--i:5"><line class="wc-wick wc-bear" x1="133" y1="65" x2="133" y2="89"/><rect class="wc-body wc-bear" x="128" y="70" width="10" height="14" rx="2"/></g>
+                                <g class="wait-candle" style="--i:6"><line class="wc-wick wc-bull" x1="156" y1="59" x2="156" y2="82"/><rect class="wc-body wc-bull" x="151" y="64" width="10" height="13" rx="2"/></g>
+                                <g class="wait-candle" style="--i:7"><line class="wc-wick wc-bear" x1="179" y1="66" x2="179" y2="88"/><rect class="wc-body wc-bear" x="174" y="71" width="10" height="12" rx="2"/></g>
+                                <g class="wait-candle" style="--i:8"><line class="wc-wick wc-bull" x1="202" y1="60" x2="202" y2="83"/><rect class="wc-body wc-bull" x="197" y="65" width="10" height="13" rx="2"/></g>
                             </svg>
                         </div>
                         <div class="inline-signal-time" id="inlineSignalTime">1:00</div>
