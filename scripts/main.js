@@ -21,6 +21,7 @@ const mobileViewportController = (() => {
         const nextKeyboardOpen = detectKeyboard();
         const nextHeight = viewportHeight();
         root.style.setProperty("--visual-viewport-height", `${nextHeight}px`);
+        root.style.setProperty("--app-height", `${nextHeight}px`);
         body?.classList.toggle("keyboard-open", nextKeyboardOpen);
         if (keyboardOpen && !nextKeyboardOpen) restoreAfterBlur();
         keyboardOpen = nextKeyboardOpen;
@@ -53,52 +54,44 @@ const mobileViewportController = (() => {
     return { init, sync, rememberScroll, restoreAfterBlur };
 })();
 
-const launchViewportState = (() => {
-    let snapshot = null;
+const telegramChromeController = (() => {
+    const applyImmersiveMode = (telegramWebApp) => {
+        if (!telegramWebApp) return;
 
-    const getScroller = () => document.querySelector(".app-wrapper");
-    const getViewportHeight = () => Math.round(window.visualViewport?.height || window.innerHeight || 0);
+        document.documentElement?.classList.add("telegram-immersive");
+        document.body?.classList.add("telegram-immersive");
 
-    const readState = () => ({
-        windowY: window.scrollY || window.pageYOffset || 0,
-        wrapperY: getScroller()?.scrollTop || 0,
-        appHeight: getViewportHeight(),
-    });
+        try { telegramWebApp.ready?.(); } catch (_) {}
+        try { if (!telegramWebApp.isExpanded) telegramWebApp.expand?.(); } catch (_) {}
+        try { telegramWebApp.disableVerticalSwipes?.(); } catch (_) {}
+        try { if (!telegramWebApp.isFullscreen) telegramWebApp.requestFullscreen?.(); } catch (_) {}
+        try { telegramWebApp.lockOrientation?.(); } catch (_) {}
 
-    const capture = (force = false) => {
-        if (snapshot && !force) return snapshot;
-        snapshot = readState();
-        document.documentElement.style.setProperty("--app-height", `${snapshot.appHeight}px`);
-        document.documentElement.style.setProperty("--launch-app-height", `${snapshot.appHeight}px`);
-        return snapshot;
+        mobileViewportController.sync();
     };
 
-    const restore = () => {
-        const target = snapshot || { windowY: 0, wrapperY: 0, appHeight: getViewportHeight() };
-        const wrapper = getScroller();
+    const init = (telegramWebApp) => {
+        if (!telegramWebApp) return;
 
-        document.documentElement.style.setProperty("--app-height", `${target.appHeight}px`);
-        document.documentElement.style.setProperty("--launch-app-height", `${target.appHeight}px`);
+        applyImmersiveMode(telegramWebApp);
+        [120, 320, 900].forEach(delay => {
+            window.setTimeout(() => applyImmersiveMode(telegramWebApp), delay);
+        });
 
-        window.setTimeout(() => {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    if (wrapper) wrapper.scrollTop = target.wrapperY;
-                    document.documentElement.scrollTop = target.windowY;
-                    document.body.scrollTop = target.windowY;
-                    window.scrollTo({ top: target.windowY, left: 0, behavior: "auto" });
-                });
-            });
-        }, 36);
+        telegramWebApp.onEvent?.("viewportChanged", () => applyImmersiveMode(telegramWebApp));
+        telegramWebApp.onEvent?.("fullscreenChanged", () => applyImmersiveMode(telegramWebApp));
+
+        window.addEventListener("orientationchange", () => {
+            window.setTimeout(() => applyImmersiveMode(telegramWebApp), 140);
+        }, { passive: true });
+
+        const retryImmersive = () => applyImmersiveMode(telegramWebApp);
+        document.addEventListener("touchstart", retryImmersive, { passive: true, once: true });
+        document.addEventListener("click", retryImmersive, { passive: true, once: true });
     };
 
-    return { capture, restore };
+    return { init, applyImmersiveMode };
 })();
-
-function setPickerOpen(isOpen) {
-    document.documentElement.classList.toggle("picker-open", isOpen);
-    document.body.classList.toggle("picker-open", isOpen);
-}
 
 function setTerminalSettingsExpanded(nextOpen) {
     const button = document.getElementById("terminalSettingsToggle");
@@ -123,17 +116,10 @@ function collapseTerminalSettings() {
 // =============================
 document.addEventListener("DOMContentLoaded", () => {
     const telegramWebApp = window.Telegram?.WebApp;
-    if (telegramWebApp) {
-        telegramWebApp.ready();
-        if (!telegramWebApp.isExpanded) telegramWebApp.expand();
-    }
 
     document.documentElement.style.overflowX = "hidden";
     mobileViewportController.init(telegramWebApp);
-    requestAnimationFrame(() => launchViewportState.capture(true));
-    [180, 500, 1100].forEach(delay => {
-        window.setTimeout(() => launchViewportState.capture(true), delay);
-    });
+    telegramChromeController.init(telegramWebApp);
     const vipBtn = document.getElementById("vipBtn");
     const vipIndicator = document.getElementById("vipIndicator");
     const sheet = document.getElementById("vipSheet");
@@ -2091,20 +2077,8 @@ ensureDefaultModel();
     const cryptoAssets = ["BTC","ETH","SOL","BNB","XRP","ADA","DOGE","AVAX","LINK","DOT","LTC","TRX"]
         .map(asset => ({ id:`${asset}_USDT`, name:`${asset}/USDT` }));
 
-    function open(){
-        mobileViewportController.rememberScroll();
-        setPickerOpen(true);
-        launchViewportState.restore();
-        overlay.setAttribute("aria-hidden","false");
-        render();
-    }
-    function close(){
-        searchInput?.blur();
-        overlay.setAttribute("aria-hidden","true");
-        setPickerOpen(false);
-        mobileViewportController.restoreAfterBlur();
-        launchViewportState.restore();
-    }
+    function open(){ mobileViewportController.rememberScroll(); overlay.setAttribute("aria-hidden","false"); render(); }
+    function close(){ searchInput?.blur(); overlay.setAttribute("aria-hidden","true"); mobileViewportController.restoreAfterBlur(); }
 
     function poolAll(){ return cryptoAssets; }
 
@@ -2175,8 +2149,6 @@ ensureDefaultModel();
 
     function open(){
         mobileViewportController.rememberScroll();
-        setPickerOpen(true);
-        launchViewportState.restore();
         const field = document.getElementById("timeField");
         const current = (field && field.value) ? field.value : (state.expiry || state.time || null);
         selectedId = current && PRESETS.some(p => p.label === current) ? current : null;
@@ -2184,12 +2156,7 @@ ensureDefaultModel();
         overlay.setAttribute("aria-hidden","false");
         render();
     }
-    function close(){
-        overlay.setAttribute("aria-hidden","true");
-        setPickerOpen(false);
-        mobileViewportController.restoreAfterBlur();
-        launchViewportState.restore();
-    }
+    function close(){ overlay.setAttribute("aria-hidden","true"); mobileViewportController.restoreAfterBlur(); }
 
     function render(){
         grid.innerHTML = PRESETS.map(p => `
