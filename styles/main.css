@@ -148,7 +148,10 @@ body.analysis-open .glass-signal{
     margin-top:0;
     z-index:10; box-shadow:0 18px 56px rgba(0,0,0,.5);
 }
-body.analysis-open .glass-card{opacity:.65;filter:blur(1px);pointer-events:auto}
+/* Блюр и затемнение отключены: инлайн-результат сигнала находится
+   внутри этой же карточки — фильтр делал нечитаемым сам сигнал
+   (жалоба: «ничего не видно») */
+body.analysis-open .glass-card{filter:none;pointer-events:auto}
 
 .signal-top{display:flex;justify-content:space-between;align-items:center;padding:6px 6px 10px;border-bottom:1px solid #243244}
 .signal-title{display:flex;gap:8px;align-items:center;font-weight:700}
