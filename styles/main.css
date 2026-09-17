@@ -255,9 +255,9 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
     justify-content:center;
     gap:14px;
     border-radius:10px;
-    background:rgba(8,11,16,.42);
-    backdrop-filter:blur(8px);
-    -webkit-backdrop-filter:blur(8px);
+    background:rgba(4,9,14,.55);
+    backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);
     opacity:0;
 }
 .chart-api-overlay[hidden]{display:none}
@@ -2252,7 +2252,6 @@ body.signal-running .glass-signal{display:none}
         backdrop-filter:none;
         -webkit-backdrop-filter:none;
     }
-    .chart-api-overlay,
     .signal-chart-overlay{
         backdrop-filter:none;
         -webkit-backdrop-filter:none;
@@ -2267,6 +2266,13 @@ body.signal-running .glass-signal{display:none}
         background:
             linear-gradient(145deg,rgba(255,255,255,.09),rgba(255,255,255,.025) 48%,rgba(255,255,255,.015)),
             rgba(14,18,25,.94);
+    }
+    /* Оверлей подключения к API: возвращаем усиленный блюр и затемнение графика,
+       чтобы белая анимация подключения была хорошо видна */
+    .chart-api-overlay{
+        backdrop-filter:blur(14px) !important;
+        -webkit-backdrop-filter:blur(14px) !important;
+        background:rgba(4,9,14,.55) !important;
     }
     .chart-widget.signal-active>div:not(.signal-chart-overlay):not(.chart-api-overlay){
         filter:none;
