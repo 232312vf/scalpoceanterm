@@ -424,14 +424,14 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 .inline-signal-result.is-waiting>.inline-signal-issued,
 .inline-signal-result.is-waiting>.inline-signal-next,
 .inline-signal-result.is-waiting>.inline-trade-outcome{display:none}
-/* Свечи ожидания — все белые, затемнённые, более прозрачные */
-.wc-body{stroke:rgba(255,255,255,.2);stroke-width:1}
+/* Свечи ожидания — приглушённые, полупрозрачные, максимально тихие */
+.wc-body{stroke:rgba(255,255,255,.12);stroke-width:1}
 .wc-body.wc-light{fill:url(#waitCandleGhost)}
-.wc-wick.wc-light{stroke:#e2e6ee;stroke-width:4;stroke-linecap:round;opacity:.85}
+.wc-wick.wc-light{stroke:#cfd4de;stroke-width:4;stroke-linecap:round;opacity:.7}
 /* Металлическая глубина: мягкое оттенение края тела, но не блеск */
 .wc-body{
-    filter:drop-shadow(0 1px 0 rgba(255,255,255,.14)) drop-shadow(0 -1px 0 rgba(0,0,0,.22));
-    opacity:.8;
+    filter:drop-shadow(0 1px 0 rgba(255,255,255,.08)) drop-shadow(0 -1px 0 rgba(0,0,0,.34));
+    opacity:.55;
 }
 .wait-candle{
     opacity:0;
@@ -479,6 +479,9 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
     font-weight:800;
     letter-spacing:.08em;
     text-align:center;
+    text-shadow:0 2px 12px rgba(0,0,0,.7),0 0 6px rgba(0,0,0,.45);
+    position:relative;
+    z-index:2;
     /* без пульсации: надписи не мигают */
 }
 .inline-signal-result{display:flex;flex-direction:column;align-items:center;text-align:center}
