@@ -2330,6 +2330,24 @@ ensureDefaultModel();
     let latestLiveDecision = null;
     let liveDecisionFrame = null;
 
+    // === Вход строго по открытию новой свечи ===
+    function currentCandlePeriodMs(){
+        const iv = String(chartWidget?._chartKey || "").split(":")[1] || "1m";
+        const num = parseFloat(iv) || 1;
+        const unit = iv.slice(-1);
+        if (unit === "m") return num * 60000;
+        if (unit === "h") return num * 3600000;
+        if (unit === "d") return num * 86400000;
+        return 60000;
+    }
+    function msUntilNextCandleOpen(){
+        const period = currentCandlePeriodMs();
+        return period - (Date.now() % period);
+    }
+    function fmtClock(date){
+        return new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" }).format(date);
+    }
+
     // Buttons
     q("getSignalBtn")?.addEventListener("click", start);
     q("sigRepeat")?.addEventListener("click", start);
@@ -2404,8 +2422,19 @@ ensureDefaultModel();
         signalTimers.push(setTimeout(() => finishSignal(pair), 6500));
     }
 
-    function finishSignal(pair){
-        const decision = latestLiveDecision || getSignalDecision();
+    function finishSignal(pair, atCandleOpen = false){
+        // Сигнал открывается строго по открытию новой свечи:
+        // ждём ближайшую границу свечи, затем считаем решение по свежим данным
+        if (!atCandleOpen) {
+            const waitMs = msUntilNextCandleOpen() + 350;
+            if (waitMs > 600) {
+                const fireAt = new Date(Date.now() + waitMs - 350);
+                if (inlineStatus) inlineStatus.textContent = `ОЖИДАНИЕ ОТКРЫТИЯ СВЕЧИ • ${fmtClock(fireAt)}`;
+                signalTimers.push(setTimeout(() => finishSignal(pair, true), waitMs));
+                return;
+            }
+        }
+        const decision = getSignalDecision();
         latestLiveDecision = decision;
         renderLiveDecision(decision);
         if (decision.status === "NO_TRADE" || decision.isBuy == null) {
@@ -2428,7 +2457,14 @@ ensureDefaultModel();
         const isBuy = decision.isBuy;
         const direction = isBuy ? "BUY" : "SELL";
         const expiry = Math.max(1, Number(state.expirySeconds) || 60);
-        const entryPrice = Number(chartWidget?._lastCandle?.close);
+        // Вход по цене открытия новой свечи (если она уже пришла из фида),
+        // иначе — по текущей цене (первый тик новой свечи)
+        const lastCandle = chartWidget?._lastCandle;
+        const candleOpenMs = Number(lastCandle?.time) * 1000;
+        const candleJustOpened = Number.isFinite(candleOpenMs) && (Date.now() - candleOpenMs) < currentCandlePeriodMs();
+        const entryPrice = (candleJustOpened && Number.isFinite(Number(lastCandle?.open)))
+            ? Number(lastCandle.open)
+            : Number(lastCandle?.close);
         currentTrade = {
             id: window.crypto?.randomUUID?.() || `signal-${Date.now()}`,
             pair, isBuy, expiry, entryPrice,
