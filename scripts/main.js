@@ -3,6 +3,7 @@
 // =============================
 const mobileViewportController = (() => {
     const root = document.documentElement;
+    const body = document.body;
     const visualViewport = window.visualViewport;
     let savedScrollY = 0;
     let keyboardOpen = false;
@@ -17,8 +18,11 @@ const mobileViewportController = (() => {
     };
 
     const sync = () => {
-        root.style.setProperty("--visual-viewport-height", `${viewportHeight()}px`);
         const nextKeyboardOpen = detectKeyboard();
+        const nextHeight = viewportHeight();
+        root.style.setProperty("--visual-viewport-height", `${nextHeight}px`);
+        root.style.setProperty("--app-height", `${nextHeight}px`);
+        body?.classList.toggle("keyboard-open", nextKeyboardOpen);
         if (keyboardOpen && !nextKeyboardOpen) restoreAfterBlur();
         keyboardOpen = nextKeyboardOpen;
     };
@@ -50,18 +54,72 @@ const mobileViewportController = (() => {
     return { init, sync, rememberScroll, restoreAfterBlur };
 })();
 
+const telegramChromeController = (() => {
+    const applyImmersiveMode = (telegramWebApp) => {
+        if (!telegramWebApp) return;
+
+        document.documentElement?.classList.add("telegram-immersive");
+        document.body?.classList.add("telegram-immersive");
+
+        try { telegramWebApp.ready?.(); } catch (_) {}
+        try { if (!telegramWebApp.isExpanded) telegramWebApp.expand?.(); } catch (_) {}
+        try { telegramWebApp.disableVerticalSwipes?.(); } catch (_) {}
+        try { if (!telegramWebApp.isFullscreen) telegramWebApp.requestFullscreen?.(); } catch (_) {}
+        try { telegramWebApp.lockOrientation?.(); } catch (_) {}
+
+        mobileViewportController.sync();
+    };
+
+    const init = (telegramWebApp) => {
+        if (!telegramWebApp) return;
+
+        applyImmersiveMode(telegramWebApp);
+        [120, 320, 900].forEach(delay => {
+            window.setTimeout(() => applyImmersiveMode(telegramWebApp), delay);
+        });
+
+        telegramWebApp.onEvent?.("viewportChanged", () => applyImmersiveMode(telegramWebApp));
+        telegramWebApp.onEvent?.("fullscreenChanged", () => applyImmersiveMode(telegramWebApp));
+
+        window.addEventListener("orientationchange", () => {
+            window.setTimeout(() => applyImmersiveMode(telegramWebApp), 140);
+        }, { passive: true });
+
+        const retryImmersive = () => applyImmersiveMode(telegramWebApp);
+        document.addEventListener("touchstart", retryImmersive, { passive: true, once: true });
+        document.addEventListener("click", retryImmersive, { passive: true, once: true });
+    };
+
+    return { init, applyImmersiveMode };
+})();
+
+function setTerminalSettingsExpanded(nextOpen) {
+    const button = document.getElementById("terminalSettingsToggle");
+    const content = document.getElementById("terminalSettingsContent");
+    const input = document.getElementById("platformUrl");
+    if (!button || !content) return;
+
+    button.setAttribute("aria-expanded", String(nextOpen));
+    content.hidden = !nextOpen;
+    content.setAttribute("aria-hidden", String(!nextOpen));
+
+    if (!nextOpen && document.activeElement === input) input.blur();
+}
+
+function collapseTerminalSettings() {
+    setTerminalSettingsExpanded(false);
+    mobileViewportController.restoreAfterBlur();
+}
+
 // =============================
 // VIP Indicator & Bottom Sheet
 // =============================
 document.addEventListener("DOMContentLoaded", () => {
     const telegramWebApp = window.Telegram?.WebApp;
-    if (telegramWebApp) {
-        telegramWebApp.ready();
-        if (!telegramWebApp.isExpanded) telegramWebApp.expand();
-    }
 
     document.documentElement.style.overflowX = "hidden";
     mobileViewportController.init(telegramWebApp);
+    telegramChromeController.init(telegramWebApp);
     const vipBtn = document.getElementById("vipBtn");
     const vipIndicator = document.getElementById("vipIndicator");
     const sheet = document.getElementById("vipSheet");
@@ -434,10 +492,6 @@ function toggleFAQ(button) {
 }
 
 function toggleTerminalSettings(button) {
-    const content = document.getElementById("terminalSettingsContent");
-    const input = document.getElementById("platformUrl");
-    if (!content) return;
-
     const isOpen = button.getAttribute("aria-expanded") === "true";
     const nextOpen = !isOpen;
 
@@ -445,14 +499,8 @@ function toggleTerminalSettings(button) {
         mobileViewportController.rememberScroll();
     }
 
-    button.setAttribute("aria-expanded", String(nextOpen));
-    content.hidden = !nextOpen;
-    content.setAttribute("aria-hidden", String(!nextOpen));
-
-    if (!nextOpen) {
-        if (document.activeElement === input) input.blur();
-        mobileViewportController.restoreAfterBlur();
-    }
+    setTerminalSettingsExpanded(nextOpen);
+    if (!nextOpen) mobileViewportController.restoreAfterBlur();
 }
 
 function updateChart(symbol, timeframe, forceReload = false) {
@@ -2029,8 +2077,8 @@ ensureDefaultModel();
     const cryptoAssets = ["BTC","ETH","SOL","BNB","XRP","ADA","DOGE","AVAX","LINK","DOT","LTC","TRX"]
         .map(asset => ({ id:`${asset}_USDT`, name:`${asset}/USDT` }));
 
-    function open(){ overlay.setAttribute("aria-hidden","false"); render(); }
-    function close(){ overlay.setAttribute("aria-hidden","true"); }
+    function open(){ mobileViewportController.rememberScroll(); overlay.setAttribute("aria-hidden","false"); render(); }
+    function close(){ searchInput?.blur(); overlay.setAttribute("aria-hidden","true"); mobileViewportController.restoreAfterBlur(); }
 
     function poolAll(){ return cryptoAssets; }
 
@@ -2100,6 +2148,7 @@ ensureDefaultModel();
     let selectedId = null;
 
     function open(){
+        mobileViewportController.rememberScroll();
         const field = document.getElementById("timeField");
         const current = (field && field.value) ? field.value : (state.expiry || state.time || null);
         selectedId = current && PRESETS.some(p => p.label === current) ? current : null;
@@ -2107,7 +2156,7 @@ ensureDefaultModel();
         overlay.setAttribute("aria-hidden","false");
         render();
     }
-    function close(){ overlay.setAttribute("aria-hidden","true"); }
+    function close(){ overlay.setAttribute("aria-hidden","true"); mobileViewportController.restoreAfterBlur(); }
 
     function render(){
         grid.innerHTML = PRESETS.map(p => `
@@ -2964,6 +3013,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     input.addEventListener("blur", () => {
         mobileViewportController.restoreAfterBlur();
+        window.setTimeout(() => {
+            if (isConnected) collapseTerminalSettings();
+        }, 80);
     });
 
     input.addEventListener("input", () => {
@@ -3043,6 +3095,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         document.body.classList.add("api-connected");
                         checkReady();
                         showChartApiConnection();
+                        collapseTerminalSettings();
                         isConnected = true;
                         if (connectButton) {
                             connectButton.disabled = false;
