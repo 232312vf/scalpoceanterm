@@ -2439,6 +2439,9 @@ ensureDefaultModel();
                 const fireAt = new Date(Date.now() + waitMs - CANDLE_TICK_SETTLE_MS);
                 if (inlineStatus) inlineStatus.textContent = `ОЖИДАНИЕ ОТКРЫТИЯ СВЕЧИ ${fmtClock(fireAt)}`;
                 directionVisual?.classList.add("is-waiting");
+                // показываем блок результата, иначе анимацию ожидания не видно
+                inlineResult?.classList.add("is-waiting");
+                inlineResult?.removeAttribute("hidden");
                 signalTimers.push(setTimeout(() => finishSignal(pair, true), waitMs));
                 return;
             }
@@ -2450,6 +2453,7 @@ ensureDefaultModel();
             // Свежая свеча (до 7 сек. с открытия) — входим сразу
         }
         directionVisual?.classList.remove("is-waiting");
+        inlineResult?.classList.remove("is-waiting");
         const decision = getSignalDecision();
         latestLiveDecision = decision;
         renderLiveDecision(decision);
@@ -2954,6 +2958,7 @@ ensureDefaultModel();
         inlineTradeOutcome?.setAttribute("hidden", "");
         inlinePanel?.classList.remove("is-buy", "is-sell");
         directionVisual?.classList.remove("is-waiting");
+        inlineResult?.classList.remove("is-waiting");
         chartOverlay?.setAttribute("hidden", "");
         chartOverlay?.classList.remove("signal-persistent");
         chartOverlay?.classList.remove("outcome-win", "outcome-loss");
