@@ -10,6 +10,24 @@
 html,body{width:100%;min-height:100%;font-family:Arial, sans-serif;background:#020407;color:#e7edf4;overflow-x:hidden;overflow-y:auto}
 html{-webkit-tap-highlight-color:transparent;overscroll-behavior-x:none}
 button,a,input,[role="button"]{touch-action:manipulation}
+html.telegram-immersive,body.telegram-immersive{
+    min-height:var(--app-height,100dvh);
+    height:var(--app-height,100dvh);
+    overscroll-behavior:none;
+}
+body.telegram-immersive{
+    overflow:hidden;
+}
+body.telegram-immersive .app-wrapper{
+    min-height:var(--app-height,100dvh);
+    height:var(--app-height,100dvh);
+    overflow-y:auto;
+    overscroll-behavior:none;
+    -webkit-overflow-scrolling:touch;
+}
+body.telegram-immersive .main{
+    padding-bottom:calc(96px + env(safe-area-inset-bottom));
+}
 .app-wrapper{
     min-height:100vh;
     min-height:var(--app-height,100dvh);
