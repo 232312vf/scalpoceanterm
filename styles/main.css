@@ -404,24 +404,32 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 .signal-wait-visual{display:none}
 .signal-direction-visual.is-waiting .signal-wait-visual{display:block}
 .signal-direction-visual.is-waiting .signal-direction-svg{display:none}
-.wait-range-line{stroke:rgba(255,255,255,.16);stroke-width:1.5;stroke-dasharray:5 7;stroke-linecap:round}
+.signal-direction-visual.is-waiting{color:#9fb0c2;filter:drop-shadow(0 0 14px rgba(159,176,194,.2));animation:signalDirectionIn .75s cubic-bezier(.22,1,.36,1) both,waitVisualBreathe 3.6s ease-in-out infinite}
+.wait-band{fill:rgba(255,255,255,.05)}
+.wait-range{animation:waitRangeSway 3.6s ease-in-out infinite}
 .wc-body.wc-bull{fill:#16c79a}
 .wc-body.wc-bear{fill:#f04f5f}
 .wc-wick.wc-bull{stroke:#16c79a;stroke-width:2;stroke-linecap:round}
 .wc-wick.wc-bear{stroke:#f04f5f;stroke-width:2;stroke-linecap:round}
 .wait-candle{
     opacity:0;
-    animation:waitCandlePop 2.4s ease-in-out infinite;
-    animation-delay:calc(var(--i)*.22s);
+    transform-box:fill-box;
+    transform-origin:50% 100%;
+    animation:waitCandleIn 3.6s ease-in-out infinite;
+    animation-delay:calc(var(--i)*.18s);
 }
-@keyframes waitCandlePop{
-    0%{opacity:0;transform:translateY(8px)}
-    16%{opacity:1;transform:translateY(0)}
-    70%{opacity:1;transform:translateY(0)}
-    100%{opacity:0;transform:translateY(-5px)}
+/* При ожидании свечи поочерёдно «вырастают» на уровне диапазона и мягко покачиваются */
+@keyframes waitCandleIn{
+    0%{opacity:0;transform:translateY(9px) scaleY(.45)}
+    15%{opacity:1;transform:translateY(0) scaleY(1)}
+    58%{opacity:1;transform:translateY(0) scaleY(1)}
+    76%{opacity:1;transform:translateY(2.5px) scaleY(.97)}
+    100%{opacity:0;transform:translateY(-9px) scaleY(.9)}
 }
+@keyframes waitRangeSway{0%,100%{transform:translateX(-2.5px)}50%{transform:translateX(2.5px)}}
+@keyframes waitVisualBreathe{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
 @media (prefers-reduced-motion:reduce){
-    .wait-candle{animation:none;opacity:1;transform:none}
+    .wait-candle,.wait-range,.signal-direction-visual.is-waiting{animation:none;opacity:1;transform:none}
 }
 @keyframes signalDirectionIn{to{opacity:1;transform:scale(1) translateY(0)}}
 @keyframes signalTextIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}

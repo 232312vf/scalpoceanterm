@@ -2331,6 +2331,10 @@ ensureDefaultModel();
     let liveDecisionFrame = null;
 
     // === Вход строго по открытию новой свечи ===
+    // Если свеча открылась совсем недавно (в пределах окна входа), входим сразу,
+    // иначе ждём открытие следующей свечи.
+    const CANDLE_ENTRY_WINDOW_MS = 7000;
+    const CANDLE_TICK_SETTLE_MS = 350;
     function currentCandlePeriodMs(){
         const iv = String(chartWidget?._chartKey || "").split(":")[1] || "1m";
         const num = parseFloat(iv) || 1;
@@ -2423,17 +2427,27 @@ ensureDefaultModel();
     }
 
     function finishSignal(pair, atCandleOpen = false){
-        // Сигнал открывается строго по открытию новой свечи:
-        // ждём ближайшую границу свечи, затем считаем решение по свежим данным
+        // Сигнал открывается по открытию свечи:
+        // если свеча открылась недавно (в пределах окна входа) — входим сразу,
+        // иначе ждём ближайшую границу свечи и считаем решение по свежим данным
         if (!atCandleOpen) {
-            const waitMs = msUntilNextCandleOpen() + 350;
-            if (waitMs > 600) {
-                const fireAt = new Date(Date.now() + waitMs - 350);
+            const period = currentCandlePeriodMs();
+            const sinceOpenMs = period - msUntilNextCandleOpen();
+            if (sinceOpenMs > CANDLE_ENTRY_WINDOW_MS) {
+                // Свеча открылась давно — входим только по открытию следующей
+                const waitMs = msUntilNextCandleOpen() + CANDLE_TICK_SETTLE_MS;
+                const fireAt = new Date(Date.now() + waitMs - CANDLE_TICK_SETTLE_MS);
                 if (inlineStatus) inlineStatus.textContent = `ОЖИДАНИЕ ОТКРЫТИЯ СВЕЧИ ${fmtClock(fireAt)}`;
                 directionVisual?.classList.add("is-waiting");
                 signalTimers.push(setTimeout(() => finishSignal(pair, true), waitMs));
                 return;
             }
+            if (sinceOpenMs < CANDLE_TICK_SETTLE_MS) {
+                // Свеча только открылась — даём фиду прислать тик новой свечи
+                signalTimers.push(setTimeout(() => finishSignal(pair, true), CANDLE_TICK_SETTLE_MS - sinceOpenMs));
+                return;
+            }
+            // Свежая свеча (до 7 сек. с открытия) — входим сразу
         }
         directionVisual?.classList.remove("is-waiting");
         const decision = getSignalDecision();
@@ -2939,6 +2953,7 @@ ensureDefaultModel();
         inlineResult?.setAttribute("hidden", "");
         inlineTradeOutcome?.setAttribute("hidden", "");
         inlinePanel?.classList.remove("is-buy", "is-sell");
+        directionVisual?.classList.remove("is-waiting");
         chartOverlay?.setAttribute("hidden", "");
         chartOverlay?.classList.remove("signal-persistent");
         chartOverlay?.classList.remove("outcome-win", "outcome-loss");
