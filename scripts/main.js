@@ -54,45 +54,6 @@ const mobileViewportController = (() => {
     return { init, sync, rememberScroll, restoreAfterBlur };
 })();
 
-const telegramChromeController = (() => {
-    const applyImmersiveMode = (telegramWebApp) => {
-        if (!telegramWebApp) return;
-
-        document.documentElement?.classList.add("telegram-immersive");
-        document.body?.classList.add("telegram-immersive");
-
-        try { telegramWebApp.ready?.(); } catch (_) {}
-        try { if (!telegramWebApp.isExpanded) telegramWebApp.expand?.(); } catch (_) {}
-        try { telegramWebApp.disableVerticalSwipes?.(); } catch (_) {}
-        try { if (!telegramWebApp.isFullscreen) telegramWebApp.requestFullscreen?.(); } catch (_) {}
-        try { telegramWebApp.lockOrientation?.(); } catch (_) {}
-
-        mobileViewportController.sync();
-    };
-
-    const init = (telegramWebApp) => {
-        if (!telegramWebApp) return;
-
-        applyImmersiveMode(telegramWebApp);
-        [120, 320, 900].forEach(delay => {
-            window.setTimeout(() => applyImmersiveMode(telegramWebApp), delay);
-        });
-
-        telegramWebApp.onEvent?.("viewportChanged", () => applyImmersiveMode(telegramWebApp));
-        telegramWebApp.onEvent?.("fullscreenChanged", () => applyImmersiveMode(telegramWebApp));
-
-        window.addEventListener("orientationchange", () => {
-            window.setTimeout(() => applyImmersiveMode(telegramWebApp), 140);
-        }, { passive: true });
-
-        const retryImmersive = () => applyImmersiveMode(telegramWebApp);
-        document.addEventListener("touchstart", retryImmersive, { passive: true, once: true });
-        document.addEventListener("click", retryImmersive, { passive: true, once: true });
-    };
-
-    return { init, applyImmersiveMode };
-})();
-
 function setTerminalSettingsExpanded(nextOpen) {
     const button = document.getElementById("terminalSettingsToggle");
     const content = document.getElementById("terminalSettingsContent");
@@ -116,10 +77,13 @@ function collapseTerminalSettings() {
 // =============================
 document.addEventListener("DOMContentLoaded", () => {
     const telegramWebApp = window.Telegram?.WebApp;
+    if (telegramWebApp) {
+        telegramWebApp.ready();
+        if (!telegramWebApp.isExpanded) telegramWebApp.expand();
+    }
 
     document.documentElement.style.overflowX = "hidden";
     mobileViewportController.init(telegramWebApp);
-    telegramChromeController.init(telegramWebApp);
     const vipBtn = document.getElementById("vipBtn");
     const vipIndicator = document.getElementById("vipIndicator");
     const sheet = document.getElementById("vipSheet");
@@ -186,11 +150,11 @@ function ensureDefaultModel(force = false) {
     if (!state.pair) {
         state.pair = "BTC/USDT";
         const pairField = document.getElementById("pairField");
-        if (pairField) pairField.value = state.pair;
+        if (pairField) setFieldValue(pairField, state.pair);
     }
     if (force || !state.model) {
         state.model = DEFAULT_MODEL;
-        const mf = document.getElementById("modelField");  if (mf) mf.value = DEFAULT_MODEL;
+        const mf = document.getElementById("modelField");  if (mf) setFieldValue(mf, DEFAULT_MODEL);
         const sm = document.getElementById("selectedModel"); if (sm) sm.textContent = DEFAULT_MODEL;
         saveState();
     }
@@ -228,7 +192,7 @@ function restoreState() {
         state.expirySeconds = Number.isFinite(s.expirySeconds) ? s.expirySeconds : null;
         state.model = s.model ?? null;
 
-        const setVal = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+        const setVal = (id, v) => { const el = document.getElementById(id); if (el && v != null) setFieldValue(el, v); };
         setVal("pairField",  state.pair);
         setVal("timeField",  state.time);
         setVal("modelField", state.model);
@@ -422,9 +386,23 @@ function selectField(field) {
     if (!value) return;
     state[field] = value;
     const el = document.getElementById(`${field}Field`);
-    if (el) el.value = value;
+    if (el) setFieldValue(el, value);
     checkReady();
     saveState();
+}
+
+// Универсальный сеттер значения поля (input или button)
+function setFieldValue(el, v) {
+    if (!el) return;
+    if (v == null) v = "";
+    if ("value" in el) el.value = v;
+    el.textContent = v;
+}
+
+function clearFieldValue(el) {
+    if (!el) return;
+    if ("value" in el) el.value = "";
+    el.textContent = "";
 }
 
 
@@ -1680,8 +1658,8 @@ function applyI18nToDOM() {
     const pairInput = document.getElementById("pairField");
     const timeInput = document.getElementById("timeField");
     const modelInput= document.getElementById("modelField");
-    if (pairInput) pairInput.placeholder = t("field_pair_ph");
-    if (timeInput) timeInput.placeholder  = t("field_expiry_ph");
+    if (pairInput) { pairInput.setAttribute("placeholder", t("field_pair_ph")); pairInput.setAttribute("data-placeholder", t("field_pair_ph")); }
+    if (timeInput) { timeInput.setAttribute("placeholder", t("field_expiry_ph")); timeInput.setAttribute("data-placeholder", t("field_expiry_ph")); }
     if (modelInput) modelInput.placeholder= t("field_model_ph");
 
     const getBtn = document.getElementById("getSignalBtn");
@@ -2101,7 +2079,7 @@ ensureDefaultModel();
                 if (!item) return;
                 state.pair = item.name;
                 const field = document.getElementById("pairField");
-                if (field) field.value = item.name;
+                if (field) setFieldValue(field, item.name);
                 checkReady();
                 saveState();
                 close();
@@ -2192,7 +2170,7 @@ ensureDefaultModel();
         ].filter(Boolean);
 
         targets.forEach(el => {
-            if ("value" in el) el.value = item.label; else el.textContent = item.label;
+            setFieldValue(el, item.label);
             try {
                 el.dispatchEvent(new Event("input",  { bubbles: true }));
                 el.dispatchEvent(new Event("change", { bubbles: true }));
@@ -2274,7 +2252,7 @@ ensureDefaultModel();
         ].filter(Boolean);
 
         targets.forEach(el => {
-            if ("value" in el) el.value = item.label; else el.textContent = item.label;
+            setFieldValue(el, item.label);
             try {
                 el.dispatchEvent(new Event("input",  { bubbles: true }));
                 el.dispatchEvent(new Event("change", { bubbles: true }));
@@ -2923,7 +2901,7 @@ ensureDefaultModel();
         resetSigSteps();
 
         if (!preserveSettings) {
-            const clear = id => { const el = q(id); if (el) el.value=""; };
+            const clear = id => { const el = q(id); if (el) clearFieldValue(el); };
             clear("pairField"); clear("timeField"); // modelField НЕ трогаем
             state.pair = null;
             state.time = null;
@@ -2933,7 +2911,7 @@ ensureDefaultModel();
 
         // возвращаем фиксированную модель
         state.model = DEFAULT_MODEL;
-        const mf = q("modelField"); if (mf) mf.value = DEFAULT_MODEL;
+        const mf = q("modelField"); if (mf) setFieldValue(mf, DEFAULT_MODEL);
         const sm = document.getElementById("selectedModel"); if (sm) sm.textContent = DEFAULT_MODEL;
 
         try { localStorage.removeItem(STATE_KEY); } catch(_) {}

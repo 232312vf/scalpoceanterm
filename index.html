@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -79,13 +79,13 @@
                     <div class="controls-title" id="terminalSetupTitle">Настройка терминала</div>
 
                     <div class="field-block" onclick="selectField('pair')">
-                        <label id="pairLabel">Валютная пара</label>
-                        <input type="text" id="pairField" value="BTC/USDT" placeholder="Выберите пару" readonly />
+                        <label id="pairLabel" for="pairField">Валютная пара</label>
+                        <button type="button" class="field-control" id="pairField" value="BTC/USDT" data-placeholder="Выберите пару">BTC/USDT</button>
                     </div>
 
                     <div class="field-block" onclick="selectField('expiry')">
-                        <label id="expiryLabel">Время экспирации</label>
-                        <input type="text" id="timeField" placeholder="Выберите время" readonly />
+                        <label id="expiryLabel" for="timeField">Время экспирации</label>
+                        <button type="button" class="field-control" id="timeField" data-placeholder="Выберите время">Выберите время</button>
                     </div>
 
                     <section class="terminal-settings">

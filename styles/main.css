@@ -10,24 +10,6 @@
 html,body{width:100%;min-height:100%;font-family:Arial, sans-serif;background:#020407;color:#e7edf4;overflow-x:hidden;overflow-y:auto}
 html{-webkit-tap-highlight-color:transparent;overscroll-behavior-x:none}
 button,a,input,[role="button"]{touch-action:manipulation}
-html.telegram-immersive,body.telegram-immersive{
-    min-height:var(--app-height,100dvh);
-    height:var(--app-height,100dvh);
-    overscroll-behavior:none;
-}
-body.telegram-immersive{
-    overflow:hidden;
-}
-body.telegram-immersive .app-wrapper{
-    min-height:var(--app-height,100dvh);
-    height:var(--app-height,100dvh);
-    overflow-y:auto;
-    overscroll-behavior:none;
-    -webkit-overflow-scrolling:touch;
-}
-body.telegram-immersive .main{
-    padding-bottom:calc(96px + env(safe-area-inset-bottom));
-}
 .app-wrapper{
     min-height:100vh;
     min-height:var(--app-height,100dvh);
@@ -131,12 +113,15 @@ body.telegram-immersive .main{
 }
 .field-block{display:flex;flex-direction:column;gap:4px;cursor:pointer}
 .field-block label{font-size:14px;color:#ccc}
-.field-block input{
-    padding:10px 12px;font-size:15px;border-radius:8px;color:#fff;
+.field-block .field-control{
+    display:block;width:100%;text-align:left;
+    padding:10px 12px;font-size:15px;font-family:inherit;border-radius:8px;color:#fff;
     background: rgba(255,255,255,.05); /* Легкое выделение внутри */
     border: 1px solid rgba(255,255,255,.1);
-    pointer-events:auto;
+    pointer-events:none; /* клик обрабатывает .field-block */
 }
+.field-block .field-control:empty::before{content:attr(data-placeholder);opacity:.55}
+.field-block .field-control:focus{outline:none}
 
 /* Submit button */
 .submit-btn{
@@ -531,7 +516,7 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
     .terminal-sidebar .field-block{gap:3px;min-height:64px;padding:11px 12px;cursor:pointer;touch-action:manipulation}
     .terminal-sidebar .field-block label,
     .settings-label{font-size:11px}
-    .terminal-sidebar .field-block input{padding:8px 7px;font-size:12px;min-height:28px}
+    .terminal-sidebar .field-block .field-control{padding:8px 7px;font-size:12px;min-height:28px}
     .settings-heading{min-height:60px;padding:10px 8px;font-size:12px;gap:5px;cursor:pointer;touch-action:manipulation}
     .settings-icon{font-size:13px}
     .settings-chevron{font-size:16px}
@@ -734,7 +719,7 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 }
 .cp-search input{box-sizing:border-box}
 .cp-search input{width:100%;height:40px;padding:0 34px 0 36px;background:rgba(8,14,22,.86);color:#f2f5fa;border:0;border-radius:12px;outline:none;box-sizing:border-box;font-family:inherit;font-size:13px;font-weight:600;letter-spacing:.01em;transition:background .25s ease}
-.cp-search input:focus{background:rgba(18,23,30,.92)}
+.cp-search input:focus{font-size:16px;background:rgba(18,23,30,.92)}
 .cp-search input::-webkit-search-cancel-button{display:none}
 .cp-search-clear{
     position:absolute;
@@ -1268,12 +1253,12 @@ body{letter-spacing:-.01em}
 .glass-card:hover,.glass-signal:hover,.faq-item:hover,.info-faq-item:hover{
     border-color:rgba(255,255,255,.25);
 }
-.field-block input{
+.field-block .field-control{
     background:rgba(0,0,0,.23);
     border-color:rgba(255,255,255,.12);
     transition:border-color .2s ease,box-shadow .2s ease,background .2s ease;
 }
-.field-block:hover input,.field-block:focus-within input{
+.field-block:hover .field-control,.field-block:focus-within .field-control{
     background:rgba(255,255,255,.07);
     border-color:rgba(255,255,255,.42);
     box-shadow:0 0 0 3px rgba(255,255,255,.06);
@@ -1443,7 +1428,7 @@ body{letter-spacing:-.01em}
     font-weight:600;
     letter-spacing:.01em;
 }
-.terminal-sidebar .field-block input{
+.terminal-sidebar .field-block .field-control{
     height:42px;
     border-radius:11px;
     background:rgba(4,5,7,.35);
@@ -1466,14 +1451,14 @@ body{letter-spacing:-.01em}
     border-color:rgba(255,255,255,.25);
     box-shadow:0 0 18px rgba(255,255,255,.05);
 }
-.terminal-sidebar .field-block input{
+.terminal-sidebar .field-block .field-control{
     padding:0;
     height:24px;
     border:0;
     background:transparent;
     box-shadow:none;
 }
-.terminal-sidebar .field-block:hover input{background:transparent;border-color:transparent;box-shadow:none}
+.terminal-sidebar .field-block:hover .field-control{background:transparent;border-color:transparent;box-shadow:none}
 .terminal-settings{margin-top:4px}
 .settings-heading{
     width:100%;
@@ -1647,6 +1632,7 @@ body{letter-spacing:-.01em}
 }
 .platform-input::placeholder{color:#747b88}
 .platform-input:focus{
+    font-size:16px; /* >=16px — iOS не зумит страницу при фокусе */
     border-color:rgba(255,255,255,.32);
     background:rgba(255,255,255,.07);
     box-shadow:0 0 0 3px rgba(255,255,255,.05);
@@ -1779,7 +1765,7 @@ body.signal-running .glass-signal{display:none}
         font-size:11px;
     }
 
-    .terminal-sidebar .field-block input{
+    .terminal-sidebar .field-block .field-control{
         height:24px;
         min-height:24px;
         font-size:14px;
