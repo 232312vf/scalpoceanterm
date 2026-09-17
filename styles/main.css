@@ -404,7 +404,18 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 .signal-wait-visual{display:none}
 .signal-direction-visual.is-waiting .signal-wait-visual{display:block}
 .signal-direction-visual.is-waiting .signal-direction-svg{display:none}
-.signal-direction-visual.is-waiting{color:#9fb0c2;filter:drop-shadow(0 0 14px rgba(159,176,194,.2));animation:signalDirectionIn .75s cubic-bezier(.22,1,.36,1) both,waitVisualBreathe 3.6s ease-in-out infinite}
+/* Ожидание: крупный боковик играет ФОНОМ на всю панель, статус-надпись сверху */
+.inline-signal-result.is-waiting{position:absolute;inset:0;display:block;z-index:0}
+.signal-direction-visual.is-waiting{
+    position:absolute;inset:0;width:auto;height:auto;margin:0;
+    color:#9fb0c2;
+    filter:drop-shadow(0 0 18px rgba(159,176,194,.18));
+    animation:signalDirectionIn .75s cubic-bezier(.22,1,.36,1) both,waitVisualBreathe 3.6s ease-in-out infinite;
+}
+.inline-signal-panel.is-waiting .inline-signal-status{
+    position:relative;z-index:2;
+    text-shadow:0 2px 14px rgba(0,0,0,.92),0 0 30px rgba(0,0,0,.8);
+}
 .wait-band{fill:rgba(255,255,255,.05)}
 .wait-range{animation:waitRangeSway 3.6s ease-in-out infinite}
 /* В фазе ожидания показываем только анимацию боковика, без таймера/подписи выдачи */
@@ -414,8 +425,8 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 .inline-signal-result.is-waiting>.inline-trade-outcome{display:none}
 .wc-body.wc-bull{fill:#16c79a}
 .wc-body.wc-bear{fill:#f04f5f}
-.wc-wick.wc-bull{stroke:#16c79a;stroke-width:2;stroke-linecap:round}
-.wc-wick.wc-bear{stroke:#f04f5f;stroke-width:2;stroke-linecap:round}
+.wc-wick.wc-bull{stroke:#16c79a;stroke-width:4;stroke-linecap:round}
+.wc-wick.wc-bear{stroke:#f04f5f;stroke-width:4;stroke-linecap:round}
 .wait-candle{
     opacity:0;
     transform-box:fill-box;
@@ -425,14 +436,14 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 }
 /* При ожидании свечи поочерёдно «вырастают» на уровне диапазона и мягко покачиваются */
 @keyframes waitCandleIn{
-    0%{opacity:0;transform:translateY(9px) scaleY(.45)}
+    0%{opacity:0;transform:translateY(26px) scaleY(.4)}
     15%{opacity:1;transform:translateY(0) scaleY(1)}
     58%{opacity:1;transform:translateY(0) scaleY(1)}
-    76%{opacity:1;transform:translateY(2.5px) scaleY(.97)}
-    100%{opacity:0;transform:translateY(-9px) scaleY(.9)}
+    76%{opacity:1;transform:translateY(6px) scaleY(.97)}
+    100%{opacity:0;transform:translateY(-26px) scaleY(.9)}
 }
-@keyframes waitRangeSway{0%,100%{transform:translateX(-2.5px)}50%{transform:translateX(2.5px)}}
-@keyframes waitVisualBreathe{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+@keyframes waitRangeSway{0%,100%{transform:translateX(-6px)}50%{transform:translateX(6px)}}
+@keyframes waitVisualBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.015)}}
 @media (prefers-reduced-motion:reduce){
     .wait-candle,.wait-range,.signal-direction-visual.is-waiting{animation:none;opacity:1;transform:none}
 }
