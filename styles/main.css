@@ -424,16 +424,14 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 .inline-signal-result.is-waiting>.inline-signal-issued,
 .inline-signal-result.is-waiting>.inline-signal-next,
 .inline-signal-result.is-waiting>.inline-trade-outcome{display:none}
-/* Свечи ожидания — белый + серо-металлический premium-шейд */
-.wc-body{stroke:rgba(255,255,255,.3);stroke-width:1}
-.wc-body.wc-light{fill:url(#waitCandleWhite)}
-.wc-body.wc-steel{fill:url(#waitCandleSteel)}
-.wc-wick.wc-light{stroke:#eef2f7;stroke-width:4;stroke-linecap:round}
-.wc-wick.wc-steel{stroke:#b7c0ce;stroke-width:4;stroke-linecap:round}
-/* Металлическая глубина: мягкое оттенение края тела */
+/* Свечи ожидания — все белые, затемнённые, более прозрачные */
+.wc-body{stroke:rgba(255,255,255,.2);stroke-width:1}
+.wc-body.wc-light{fill:url(#waitCandleGhost)}
+.wc-wick.wc-light{stroke:#e2e6ee;stroke-width:4;stroke-linecap:round;opacity:.85}
+/* Металлическая глубина: мягкое оттенение края тела, но не блеск */
 .wc-body{
-    filter:drop-shadow(0 1px 0 rgba(255,255,255,.32)) drop-shadow(0 -1px 0 rgba(0,0,0,.14));
-    opacity:.92;
+    filter:drop-shadow(0 1px 0 rgba(255,255,255,.14)) drop-shadow(0 -1px 0 rgba(0,0,0,.22));
+    opacity:.8;
 }
 .wait-candle{
     opacity:0;
