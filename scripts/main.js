@@ -2446,8 +2446,9 @@ ensureDefaultModel();
         if (!atCandleOpen) {
             const period = currentCandlePeriodMs();
             const sinceOpenMs = period - msUntilNextCandleOpen();
-            if (sinceOpenMs > CANDLE_ENTRY_WINDOW_MS) {
-                // Свеча открылась давно — входим только по открытию следующей
+
+            // Планируем вход на открытие следующей свечи (с анимацией ожидания)
+            const waitForNextCandle = () => {
                 const waitMs = msUntilNextCandleOpen() + CANDLE_TICK_SETTLE_MS;
                 const fireAt = new Date(Date.now() + waitMs - CANDLE_TICK_SETTLE_MS);
                 if (inlineStatus) inlineStatus.textContent = `ОЖИДАНИЕ ОТКРЫТИЯ СВЕЧИ ${fmtClock(fireAt)}`;
@@ -2457,6 +2458,11 @@ ensureDefaultModel();
                 inlineResult?.removeAttribute("hidden");
                 inlinePanel?.classList.add("is-waiting");
                 signalTimers.push(setTimeout(() => finishSignal(pair, true), waitMs));
+            };
+
+            if (sinceOpenMs > CANDLE_ENTRY_WINDOW_MS) {
+                // Свеча открылась давно — входим только по открытию следующей
+                waitForNextCandle();
                 return;
             }
             if (sinceOpenMs < CANDLE_TICK_SETTLE_MS) {
@@ -2464,12 +2470,33 @@ ensureDefaultModel();
                 signalTimers.push(setTimeout(() => finishSignal(pair, true), CANDLE_TICK_SETTLE_MS - sinceOpenMs));
                 return;
             }
-            // Свежая свеча (до 7 сек. с открытия) — входим сразу
+
+            // Свеча свежая (в пределах окна входа) — ИИ сам решает:
+            // входить срочно или дождаться новой свечи
+            const probe = getSignalDecision();
+            const candle = chartWidget?._lastCandle;
+            const candleHigh = Number(candle?.high);
+            const candleLow = Number(candle?.low);
+            const candleClose = Number(candle?.close);
+            const candleRange = Math.max(candleHigh - candleLow, 1e-9);
+            const positionInCandle = (candleClose - candleLow) / candleRange;
+            const directionClear = probe.status !== "NO_TRADE"
+                && probe.isBuy != null
+                && (probe.probability >= 0.58 || probe.confidence >= 0.42);
+            const atBadExtreme = probe.isBuy
+                ? positionInCandle >= 0.78   // покупать у вершины свечи — плохо, ждём новую
+                : positionInCandle <= 0.22;  // продавать у дна свечи — плохо, ждём новую
+            if (!directionClear || atBadExtreme) {
+                waitForNextCandle();
+                return;
+            }
+            // Всё чисто — заходим срочно
         }
         directionVisual?.classList.remove("is-waiting", "is-blocked");
         inlineResult?.classList.remove("is-waiting", "is-blocked");
         inlinePanel?.classList.remove("is-waiting", "is-blocked");
         q("noTradeChangePairBtn")?.setAttribute("hidden", "");
+        q("inlineSignalReason")?.setAttribute("hidden", "");
         const decision = getSignalDecision();
         latestLiveDecision = decision;
         renderLiveDecision(decision);
@@ -2481,6 +2508,11 @@ ensureDefaultModel();
             inlinePanel?.classList.add("is-blocked");
             q("noTradeChangePairBtn")?.removeAttribute("hidden");
             if (inlineStatus) inlineStatus.textContent = "СЕЙЧАС НЕ ЛУЧШЕЕ ВРЕМЯ ЧТОБЫ ЗАХОДИТЬ";
+            const reasonEl = q("inlineSignalReason");
+            if (reasonEl) {
+                reasonEl.textContent = decision.reason || "";
+                reasonEl.removeAttribute("hidden");
+            }
             q("sigDirection")?.replaceChildren("ПРОПУСК");
             q("sigDirection")?.classList.remove("buy", "sell");
             q("sigPair")?.replaceChildren(pair);
@@ -2793,6 +2825,15 @@ ensureDefaultModel();
             && latestClose <= latestHigh - latestRange * 0.58;
         const bullishPattern = bullishEngulfing || bullishReversal || bullishPinBar;
         const bearishPattern = bearishEngulfing || bearishReversal || bearishPinBar;
+
+        // === Откуп / распределение: серия свечей в одну сторону, затем большая
+        // противоположная свеча с объёмом = крупный игрок выкупает/сливает ===
+        const priorBearish = recent.slice(-4, -1).filter((candle) => Number(candle.close) < Number(candle.open)).length >= 2;
+        const priorBullish = recent.slice(-4, -1).filter((candle) => Number(candle.close) > Number(candle.open)).length >= 2;
+        const bullishAbsorption = priorBearish && latestClose > latestOpen
+            && bodyStrength >= 0.45 && volumeRatio >= 1.05 && latestClose >= Number(previous.close);
+        const bearishAbsorption = priorBullish && latestClose < latestOpen
+            && bodyStrength <= -0.45 && volumeRatio >= 1.05 && latestClose <= Number(previous.close);
         const levelWindow = recent.slice(-16, -1);
         const resistance = Math.max(...levelWindow.map((candle) => Number(candle.high)));
         const support = Math.min(...levelWindow.map((candle) => Number(candle.low)));
@@ -2893,10 +2934,12 @@ ensureDefaultModel();
             volume: volumeRatio >= 1.15 ? Math.sign(latestBody) : 0,
             level: atSupportZone ? 1 : atResistanceZone ? -1 : 0,
             breakout: breakoutUp ? 1 : breakoutDown ? -1 : 0,
-            momentum: (rallyStreak >= 3 && dominantTrend >= 0) ? 1 : (dumpStreak >= 3 && dominantTrend <= 0) ? -1 : 0
+            momentum: (rallyStreak >= 3 && dominantTrend >= 0) ? 1 : (dumpStreak >= 3 && dominantTrend <= 0) ? -1 : 0,
+            absorption: bullishAbsorption ? 1 : bearishAbsorption ? -1 : 0
         };
         const aiAdjust = getAiScoreAdjustment(aiVotes);
-        const score = (rangeMarket && !breakoutUp && !breakoutDown ? rangeScore : trendScore) + aiAdjust.score;
+        const score = (rangeMarket && !breakoutUp && !breakoutDown ? rangeScore : trendScore) + aiAdjust.score
+            + (bullishAbsorption ? 2.4 : bearishAbsorption ? -2.4 : 0);
         const regime = unsafe ? "UNSAFE" : rangeMarket && !breakoutUp && !breakoutDown ? "RANGE" : "TREND";
         const conflict = Math.abs(trendScore) < 1.2 && Math.abs(rangeScore) < 1.5;
         const rangeSetup = rangeMarket && !breakoutUp && !breakoutDown;
@@ -2926,11 +2969,14 @@ ensureDefaultModel();
         let traderAction = null;
         const ruleFires = (key) => getRuleTrust(key) >= 0.75;
 
-        // R0: боковик — не торгуем вовсе (отбои от границ отключены).
-        // Если исторически такие ситуации давали плюс, память повторений отменит вето
-        if (rangeSetup) {
+        // R0: боковик — пропускаем только если направление реально неясно.
+        // Чёткий ориентир (край диапазона + реакция или откуп) — торгуем
+        const rangeDirectionClear = bullishAbsorption || bearishAbsorption
+            || (nearSupport && (bullishPattern || rejectedSupport || rsi <= 40))
+            || (nearResistance && (bearishPattern || rejectedResistance || rsi >= 60));
+        if (rangeSetup && !rangeDirectionClear) {
             traderRules.push("range_no_trade");
-            traderAction = { type: "VETO", note: "рынок в боковике — пропускаем" };
+            traderAction = { type: "VETO", note: "боковик без ориентира — непонятно, куда пойдёт цена" };
         }
 
         // R1: покупка у проверенного сопротивления после затяжного роста
@@ -2985,13 +3031,13 @@ ensureDefaultModel();
             || (prevExpansion >= 1.7 && prevBodyStrength >= 0.55);
         if (!traderAction && !resolvedIsBuy && spikeDown && ruleFires("strong_impulse")) {
             traderRules.push("strong_impulse");
-            traderAction = bullishPattern || lowerWick >= latestRange * 0.4 || rsi <= 34
+            traderAction = bullishPattern || lowerWick >= latestRange * 0.4 || rsi <= 34 || bullishAbsorption
                 ? { type: "FLIP", direction: true, note: "сильный импульс вниз — ловим коррекцию вверх" }
                 : { type: "VETO", note: "сильный импульс вниз — не продаём на дне, ждём коррекцию" };
         }
         if (!traderAction && resolvedIsBuy && spikeUp && ruleFires("strong_impulse")) {
             traderRules.push("strong_impulse");
-            traderAction = bearishPattern || upperWick >= latestRange * 0.4 || rsi >= 66
+            traderAction = bearishPattern || upperWick >= latestRange * 0.4 || rsi >= 66 || bearishAbsorption
                 ? { type: "FLIP", direction: false, note: "сильный импульс вверх — ловим коррекцию вниз" }
                 : { type: "VETO", note: "сильный импульс вверх — не покупаем на хае, ждём коррекцию" };
         }
@@ -3031,7 +3077,8 @@ ensureDefaultModel();
             impulseZone: quantizeImpulse(impulse),
             levelZone: atSupportZone ? "sup" : atResistanceZone ? "res" : "",
             volumeElevated: volumeRatio >= 1.15,
-            exhaustion: exhaustionUp ? "up" : exhaustionDown ? "down" : ""
+            exhaustion: exhaustionUp ? "up" : exhaustionDown ? "down" : "",
+            absorptionZone: bullishAbsorption ? "up" : bearishAbsorption ? "down" : ""
         });
         const patternRate = getPatternWinRate(patternKey);
         let vetoedByAi = traderAction?.type === "VETO" || false;
@@ -3243,7 +3290,8 @@ ensureDefaultModel();
             `imp:${parts.impulseZone}`,
             parts.levelZone ? `level:${parts.levelZone}` : "",
             parts.volumeElevated ? "vol" : "",
-            parts.exhaustion ? `exh:${parts.exhaustion}` : ""
+            parts.exhaustion ? `exh:${parts.exhaustion}` : "",
+            parts.absorptionZone ? `abs:${parts.absorptionZone}` : ""
         ].filter(Boolean).join("|");
     }
 
@@ -3483,6 +3531,7 @@ ensureDefaultModel();
         inlineResult?.classList.remove("is-waiting", "is-blocked");
         inlinePanel?.classList.remove("is-waiting", "is-blocked");
         q("noTradeChangePairBtn")?.setAttribute("hidden", "");
+        q("inlineSignalReason")?.setAttribute("hidden", "");
         chartOverlay?.setAttribute("hidden", "");
         chartOverlay?.classList.remove("signal-persistent");
         chartOverlay?.classList.remove("outcome-win", "outcome-loss");

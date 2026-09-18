@@ -507,6 +507,22 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
     .blocked-ring,.blocked-cross{animation:none;stroke-dashoffset:0}
 }
 
+/* Причина блокировки: пояснение, почему ИИ не рекомендует вход */
+.inline-signal-reason{
+    position:relative;
+    z-index:2;
+    max-width:320px;
+    margin:10px auto 0;
+    padding:0 8px;
+    color:#aeb7c5;
+    font-size:12px;
+    font-weight:600;
+    line-height:1.45;
+    text-align:center;
+    text-shadow:0 2px 12px rgba(0,0,0,.9);
+}
+.inline-signal-reason[hidden]{display:none}
+
 /* Кнопка «Сменить пару» — показывается при пропуске входа */
 .no-trade-change-pair{
     margin:14px auto 4px;
