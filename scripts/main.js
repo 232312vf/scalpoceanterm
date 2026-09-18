@@ -3048,12 +3048,16 @@ ensureDefaultModel();
             traderRules.push("counter_trend");
             traderAction = { type: "VETO", note: "продажа против доминирующего тренда без разворотных подтверждений" };
         }
-        // R5: продажа на дне / покупка на хае при истощении движения
-        if (!traderAction && !resolvedIsBuy && exhaustionDown && rsi <= 32 && ruleFires("exhaustion")) {
+        // R5: истощение движения. ВАЖНО: в сильном тренде RSI висит на 68+ долго,
+        // и тренд продолжается — блокируем ТОЛЬКО если тренд реально выдыхается
+        // (появились контр-свечи или разворотный паттерн). Работает на всех таймфреймах
+        const upTrendContinues = rallyStreak >= 2 && dominantTrend >= 0 && !bearishPattern && upperWick < latestRange * 0.4;
+        const downTrendContinues = dumpStreak >= 2 && dominantTrend <= 0 && !bullishPattern && lowerWick < latestRange * 0.4;
+        if (!traderAction && !resolvedIsBuy && exhaustionDown && rsi <= 32 && !downTrendContinues && ruleFires("exhaustion")) {
             traderRules.push("exhaustion");
             traderAction = { type: "VETO", note: "рынок перепродан — не продаём на дне" };
         }
-        if (!traderAction && resolvedIsBuy && exhaustionUp && rsi >= 68 && ruleFires("exhaustion")) {
+        if (!traderAction && resolvedIsBuy && exhaustionUp && rsi >= 68 && !upTrendContinues && ruleFires("exhaustion")) {
             traderRules.push("exhaustion");
             traderAction = { type: "VETO", note: "рынок перекуплен — не покупаем на хае" };
         }
@@ -3069,13 +3073,13 @@ ensureDefaultModel();
         const spikeUp = (rallyStreak >= 2 && impulse >= 2.0)
             || (expansion >= 1.9 && bodyStrength >= 0.5)
             || (prevExpansion >= 1.7 && prevBodyStrength >= 0.55);
-        if (!traderAction && !resolvedIsBuy && spikeDown && ruleFires("strong_impulse")) {
+        if (!traderAction && !resolvedIsBuy && spikeDown && !downTrendContinues && ruleFires("strong_impulse")) {
             traderRules.push("strong_impulse");
             traderAction = bullishPattern || lowerWick >= latestRange * 0.4 || rsi <= 34 || bullishAbsorption
                 ? { type: "FLIP", direction: true, note: "сильный импульс вниз — ловим коррекцию вверх" }
                 : { type: "VETO", note: "сильный импульс вниз — не продаём на дне, ждём коррекцию" };
         }
-        if (!traderAction && resolvedIsBuy && spikeUp && ruleFires("strong_impulse")) {
+        if (!traderAction && resolvedIsBuy && spikeUp && !upTrendContinues && ruleFires("strong_impulse")) {
             traderRules.push("strong_impulse");
             traderAction = bearishPattern || upperWick >= latestRange * 0.4 || rsi >= 66 || bearishAbsorption
                 ? { type: "FLIP", direction: false, note: "сильный импульс вверх — ловим коррекцию вниз" }
