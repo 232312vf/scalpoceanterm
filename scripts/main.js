@@ -2331,9 +2331,9 @@ ensureDefaultModel();
     let liveDecisionFrame = null;
 
     // === Вход строго по открытию новой свечи ===
-    // Если свеча открылась совсем недавно (в пределах окна входа), входим сразу,
+    // Если свеча открылась совсем недавно (в пределах окна входа до 10 сек), входим сразу,
     // иначе ждём открытие следующей свечи.
-    const CANDLE_ENTRY_WINDOW_MS = 7000;
+    const CANDLE_ENTRY_WINDOW_MS = 10000;
     const CANDLE_TICK_SETTLE_MS = 350;
     function currentCandlePeriodMs(){
         const iv = String(chartWidget?._chartKey || "").split(":")[1] || "1m";
