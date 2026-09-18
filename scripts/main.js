@@ -3017,11 +3017,11 @@ ensureDefaultModel();
             traderAction = { type: "VETO", note: "продажа против доминирующего тренда без разворотных подтверждений" };
         }
         // R5: продажа на дне / покупка на хае при истощении движения
-        if (!traderAction && !resolvedIsBuy && exhaustionDown && rsi <= 30 && ruleFires("exhaustion")) {
+        if (!traderAction && !resolvedIsBuy && exhaustionDown && rsi <= 32 && ruleFires("exhaustion")) {
             traderRules.push("exhaustion");
             traderAction = { type: "VETO", note: "рынок перепродан — не продаём на дне" };
         }
-        if (!traderAction && resolvedIsBuy && exhaustionUp && rsi >= 70 && ruleFires("exhaustion")) {
+        if (!traderAction && resolvedIsBuy && exhaustionUp && rsi >= 68 && ruleFires("exhaustion")) {
             traderRules.push("exhaustion");
             traderAction = { type: "VETO", note: "рынок перекуплен — не покупаем на хае" };
         }
@@ -3045,6 +3045,12 @@ ensureDefaultModel();
             traderAction = bearishPattern || upperWick >= latestRange * 0.4 || rsi >= 66 || bearishAbsorption
                 ? { type: "FLIP", direction: false, note: "сильный импульс вверх — ловим коррекцию вниз" }
                 : { type: "VETO", note: "сильный импульс вверх — не покупаем на хае, ждём коррекцию" };
+        }
+        // R7: факторы противоречат друг другу, откупа нет — направление неясно
+        if (!traderAction && conflict && !bullishAbsorption && !bearishAbsorption
+            && !bullishPattern && !bearishPattern && ruleFires("low_confidence")) {
+            traderRules.push("low_confidence");
+            traderAction = { type: "VETO", note: "факторы противоречат друг другу — направление неясно" };
         }
         const finalIsBuy = traderAction?.type === "FLIP" ? traderAction.direction : resolvedIsBuy;
         const finalPBuy = finalIsBuy ? Math.max(pBuy, pSell) : Math.min(pBuy, pSell);
