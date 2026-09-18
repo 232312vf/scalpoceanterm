@@ -453,6 +453,36 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 @media (prefers-reduced-motion:reduce){
     .wait-candle,.wait-range,.signal-direction-visual.is-waiting{animation:none;opacity:1;transform:none}
 }
+
+/* Нет входа: анимация с крестиком — «сейчас не лучшее время чтобы заходить» */
+.signal-blocked-visual{display:none}
+.signal-direction-visual.is-blocked .signal-blocked-visual{display:block}
+.signal-direction-visual.is-blocked .signal-direction-svg,
+.signal-direction-visual.is-blocked .signal-wait-visual{display:none}
+.signal-direction-visual.is-blocked{filter:drop-shadow(0 0 14px rgba(255,113,128,.3))}
+.blocked-ring{
+    fill:rgba(255,113,128,.07);
+    stroke:#ff7180;stroke-width:3;
+    stroke-dasharray:278;stroke-dashoffset:278;
+    animation:blockedRingDraw .8s cubic-bezier(.22,1,.36,1) forwards;
+}
+.blocked-cross{
+    stroke:#ff7180;stroke-width:6;stroke-linecap:round;
+    stroke-dasharray:70;stroke-dashoffset:70;
+    animation:blockedCrossDraw .45s .3s cubic-bezier(.22,1,.36,1) forwards;
+}
+.blocked-cross-2{animation-delay:.55s}
+@keyframes blockedRingDraw{to{stroke-dashoffset:0}}
+@keyframes blockedCrossDraw{to{stroke-dashoffset:0}}
+/* В режиме «нет входа» скрываем таймер/подписи выдачи — остаётся крестик и статус */
+.inline-signal-result.is-blocked>.inline-signal-time,
+.inline-signal-result.is-blocked>.inline-signal-issued,
+.inline-signal-result.is-blocked>.inline-signal-next,
+.inline-signal-result.is-blocked>.inline-trade-outcome{display:none}
+.inline-signal-panel.is-blocked .inline-signal-status{color:#ff7180;text-shadow:0 0 18px rgba(255,113,128,.35)}
+@media (prefers-reduced-motion:reduce){
+    .blocked-ring,.blocked-cross{animation:none;stroke-dashoffset:0}
+}
 @keyframes signalDirectionIn{to{opacity:1;transform:scale(1) translateY(0)}}
 @keyframes signalTextIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes signalEntryIn{from{opacity:0;transform:scaleX(.3)}to{opacity:1;transform:scaleX(1)}}

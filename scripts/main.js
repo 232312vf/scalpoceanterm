@@ -2453,16 +2453,20 @@ ensureDefaultModel();
             }
             // Свежая свеча (до 7 сек. с открытия) — входим сразу
         }
-        directionVisual?.classList.remove("is-waiting");
-        inlineResult?.classList.remove("is-waiting");
-        inlinePanel?.classList.remove("is-waiting");
+        directionVisual?.classList.remove("is-waiting", "is-blocked");
+        inlineResult?.classList.remove("is-waiting", "is-blocked");
+        inlinePanel?.classList.remove("is-waiting", "is-blocked");
         const decision = getSignalDecision();
         latestLiveDecision = decision;
         renderLiveDecision(decision);
         if (decision.status === "NO_TRADE" || decision.isBuy == null) {
             currentTrade = null;
-            if (inlineStatus) inlineStatus.textContent = `NO TRADE • ${decision.reason}`;
-            q("sigDirection")?.replaceChildren("NO TRADE");
+            directionVisual?.classList.add("is-blocked");
+            inlineResult?.classList.add("is-blocked");
+            inlineResult?.removeAttribute("hidden");
+            inlinePanel?.classList.add("is-blocked");
+            if (inlineStatus) inlineStatus.textContent = "СЕЙЧАС НЕ ЛУЧШЕЕ ВРЕМЯ ЧТОБЫ ЗАХОДИТЬ";
+            q("sigDirection")?.replaceChildren("ПРОПУСК");
             q("sigDirection")?.classList.remove("buy", "sell");
             q("sigPair")?.replaceChildren(pair);
             q("sigRegime")?.replaceChildren(decision.regime);
@@ -2470,7 +2474,6 @@ ensureDefaultModel();
             q("sigFeedStatus")?.replaceChildren(chartWidget?._marketStatus || "LIVE");
             if (q("sigResult")) q("sigResult").hidden = false;
             if (q("sigAnalysis")) q("sigAnalysis").style.display = "none";
-            inlineResult?.setAttribute("hidden", "");
             if (chartProbability) chartProbability.textContent = "Вероятность —";
             chartOverlay?.setAttribute("hidden", "");
             chartWidget?.classList.remove("signal-active");
@@ -2658,6 +2661,7 @@ ensureDefaultModel();
         }
         const isWin = trade.isBuy ? close >= entry : close <= entry;
         const outcome = isWin ? "win" : "loss";
+        learnAiFactors(trade.decisionSnapshot?.aiVotes, trade.isBuy, isWin);
         recordTradeOutcome({ pair: trade.pair, isBuy: trade.isBuy, isWin });
         recordSignalStats(trade, outcome, close);
         showTradeOutcome(isWin);
@@ -2791,6 +2795,59 @@ ensureDefaultModel();
         const unsafe = expansion > SIGNAL_CONFIG.maxRangeExpansion
             || volumeRatio < 0.35
             || !Number.isFinite(rsi);
+
+        // === Память трейдера: уровни поддержки/сопротивления по длинной истории (до 140 свечей) ===
+        settleVetoes(latestClose);
+        const memory = data.slice(-140).filter((candle) =>
+            Number.isFinite(Number(candle.open)) && Number.isFinite(Number(candle.high))
+            && Number.isFinite(Number(candle.low)) && Number.isFinite(Number(candle.close)));
+        const pivotTolerance = Math.max(averageRange * 0.18, latestClose * 0.00012);
+        const swingHighs = [];
+        const swingLows = [];
+        for (let i = 2; i < memory.length - 2; i += 1) {
+            const swingHigh = Number(memory[i].high);
+            const swingLow = Number(memory[i].low);
+            const isSwingHigh = [1, 2, -1, -2].every((offset) => swingHigh >= Number(memory[i + offset].high) - pivotTolerance * 0.25);
+            const isSwingLow = [1, 2, -1, -2].every((offset) => swingLow <= Number(memory[i + offset].low) + pivotTolerance * 0.25);
+            if (isSwingHigh) swingHighs.push({ price: swingHigh, at: i });
+            if (isSwingLow) swingLows.push({ price: swingLow, at: i });
+        }
+        const clusterLevels = (pivots) => {
+            const levels = [];
+            pivots.forEach((pivot) => {
+                const existing = levels.find((level) => Math.abs(level.price - pivot.price) <= pivotTolerance);
+                if (existing) { existing.touches += 1; existing.lastAt = Math.max(existing.lastAt, pivot.at); }
+                else levels.push({ price: pivot.price, touches: 1, lastAt: pivot.at });
+            });
+            return levels;
+        };
+        const resistanceLevels = clusterLevels(swingHighs);
+        const supportLevels = clusterLevels(swingLows);
+        const nearestOf = (levels) => levels
+            .map((level) => ({ ...level, distAtr: (level.price - latestClose) / Math.max(averageRange, 1e-9) }))
+            .filter((level) => Math.abs(level.distAtr) <= 0.75)
+            .sort((a, b) => Math.abs(a.distAtr) - Math.abs(b.distAtr))[0] || null;
+        const nearbyResistance = nearestOf(resistanceLevels);
+        const nearbySupport = nearestOf(supportLevels);
+        const atResistanceZone = !!nearbyResistance;
+        const atSupportZone = !!nearbySupport;
+        const resistanceTested = !!nearbyResistance && nearbyResistance.touches >= 2;
+        const supportTested = !!nearbySupport && nearbySupport.touches >= 2;
+
+        // Усталость движения (серии свечей в одну сторону) и доминирующий тренд (глубокий, ~26 свечей)
+        let rallyStreak = 0;
+        let dumpStreak = 0;
+        for (let i = recent.length - 1; i >= 0; i -= 1) {
+            const bullish = Number(recent[i].close) >= Number(recent[i].open);
+            if (bullish) { if (dumpStreak) break; rallyStreak += 1; }
+            else { if (rallyStreak) break; dumpStreak += 1; }
+        }
+        const exhaustionUp = rallyStreak >= 4 || impulse > 2.3;
+        const exhaustionDown = dumpStreak >= 4 || impulse < -2.3;
+        const trendLookback = Math.min(recent.length - 1, 26);
+        const dominantShift = (latestClose - Number(recent[recent.length - 1 - trendLookback].close)) / Math.max(averageRange, 1e-9);
+        const dominantTrend = dominantShift > 1.6 ? 1 : dominantShift < -1.6 ? -1 : 0;
+
         const trendBias = Math.sign(fastEma - slowEma);
         const trendScore = trendBias * 2
             + Math.sign(impulse) * 1.7
@@ -2805,7 +2862,18 @@ ensureDefaultModel();
             - (nearResistance ? 1.5 : 0)
             + (rsi <= 42 ? 1.5 : rsi >= 58 ? -1.5 : 0)
             + (bullishPattern ? 1 : bearishPattern ? -1 : 0);
-        const score = rangeMarket && !breakoutUp && !breakoutDown ? rangeScore : trendScore;
+        // === Голоса факторов для локальной ИИ (веса обучаются на итогах сделок) ===
+        const aiVotes = {
+            trend: Math.sign(fastEma - slowEma),
+            impulse: Math.sign(impulse),
+            rsi: rsi <= 35 ? 1 : rsi >= 65 ? -1 : 0,
+            pattern: bullishPattern ? 1 : bearishPattern ? -1 : 0,
+            volume: volumeRatio >= 1.15 ? Math.sign(latestBody) : 0,
+            level: atSupportZone ? 1 : atResistanceZone ? -1 : 0,
+            breakout: breakoutUp ? 1 : breakoutDown ? -1 : 0
+        };
+        const aiAdjust = getAiScoreAdjustment(aiVotes);
+        const score = (rangeMarket && !breakoutUp && !breakoutDown ? rangeScore : trendScore) + aiAdjust.score;
         const regime = unsafe ? "UNSAFE" : rangeMarket && !breakoutUp && !breakoutDown ? "RANGE" : "TREND";
         const conflict = Math.abs(trendScore) < 1.2 && Math.abs(rangeScore) < 1.5;
         const rangeSetup = rangeMarket && !breakoutUp && !breakoutDown;
@@ -2829,11 +2897,68 @@ ensureDefaultModel();
                         ? score > 0
                         : trendScore >= 0
             : isBuy;
+
+        // === Правила «как трейдер»: уровни длинной памяти, усталость, доминирующий тренд ===
+        const traderRules = [];
+        let traderAction = null;
+        const ruleFires = (key) => getRuleTrust(key) >= 0.75;
+
+        // R1: покупка у проверенного сопротивления после затяжного роста
+        if (resolvedIsBuy && atResistanceZone && (resistanceTested || exhaustionUp) && ruleFires("buy_into_resistance")) {
+            traderRules.push("buy_into_resistance");
+            traderAction = bearishPattern || upperWick >= latestRange * 0.4
+                ? { type: "FLIP", direction: false, note: "отбой от проверенного сопротивления, покупка на хаях опасна" }
+                : { type: "VETO", note: "цена у проверенного сопротивления после затяжного роста" };
+        }
+        // R2: продажа от проверенной поддержки после затяжного падения
+        if (!traderAction && !resolvedIsBuy && atSupportZone && (supportTested || exhaustionDown) && ruleFires("sell_into_support")) {
+            traderRules.push("sell_into_support");
+            traderAction = bullishPattern || lowerWick >= latestRange * 0.4 || rsi <= 34
+                ? { type: "FLIP", direction: true, note: "отбой от проверенной поддержки, рынок перепродан" }
+                : { type: "VETO", note: "цена у проверенной поддержки — не продаём на дне, ждём отбой" };
+        }
+        // R3: «вобанк» на пробое заезженного уровня без объёма
+        if (!traderAction && resolvedIsBuy && breakoutUp && resistanceTested && volumeRatio < 1.35 && ruleFires("stale_breakout")) {
+            traderRules.push("stale_breakout");
+            traderAction = { type: "VETO", note: "пробой заезженного уровня без подтверждения объёмом" };
+        }
+        if (!traderAction && !resolvedIsBuy && breakoutDown && supportTested && volumeRatio < 1.35 && ruleFires("stale_breakout")) {
+            traderRules.push("stale_breakout");
+            traderAction = { type: "VETO", note: "пробой заезженного уровня без подтверждения объёмом" };
+        }
+        // R4: вход против доминирующего тренда без подтверждения уровнем
+        if (!traderAction && resolvedIsBuy && dominantTrend < 0 && !atSupportZone && ruleFires("counter_trend")) {
+            traderRules.push("counter_trend");
+            traderAction = { type: "VETO", note: "покупка против доминирующего тренда" };
+        }
+        if (!traderAction && !resolvedIsBuy && dominantTrend > 0 && !atResistanceZone && ruleFires("counter_trend")) {
+            traderRules.push("counter_trend");
+            traderAction = { type: "VETO", note: "продажа против доминирующего тренда" };
+        }
+        // R5: продажа на дне / покупка на хае при истощении движения
+        if (!traderAction && !resolvedIsBuy && exhaustionDown && rsi <= 30 && ruleFires("exhaustion")) {
+            traderRules.push("exhaustion");
+            traderAction = { type: "VETO", note: "рынок перепродан — не продаём на дне" };
+        }
+        if (!traderAction && resolvedIsBuy && exhaustionUp && rsi >= 70 && ruleFires("exhaustion")) {
+            traderRules.push("exhaustion");
+            traderAction = { type: "VETO", note: "рынок перекуплен — не покупаем на хае" };
+        }
+        const finalIsBuy = traderAction?.type === "FLIP" ? traderAction.direction : resolvedIsBuy;
+        const finalPBuy = finalIsBuy ? Math.max(pBuy, pSell) : Math.min(pBuy, pSell);
+
         const common = {
-            isBuy: resolvedIsBuy, pBuy, pSell, probability, confidence, accuracy: getRollingAccuracy(),
+            isBuy: finalIsBuy,
+            pBuy: finalPBuy,
+            pSell: 1 - finalPBuy,
+            probability: Math.max(finalPBuy, 1 - finalPBuy),
+            confidence, accuracy: getRollingAccuracy(),
             score, regime, generatedAt: Date.now(), support, resistance, rangePosition,
+            aiVotes, traderRules,
             features: { rsi, impulse, volumeRatio, expansion, nearSupport, nearResistance,
-                rejectedSupport, rejectedResistance, breakoutUp, breakoutDown },
+                rejectedSupport, rejectedResistance, breakoutUp, breakoutDown,
+                rallyStreak, dumpStreak, dominantTrend, atSupportZone, atResistanceZone,
+                supportTested, resistanceTested },
             dataFreshnessMs: container?._lastMarketMessageAt
                 ? Date.now() - container._lastMarketMessageAt : null
         };
@@ -2848,11 +2973,25 @@ ensureDefaultModel();
             : unsafe
                 ? (resolvedIsBuy ? "BUY • повышенная волатильность" : "SELL • повышенная волатильность")
                 : (resolvedIsBuy ? "TREND continuation вверх" : "TREND continuation вниз");
+        const finalReason = traderAction?.note ? `${reason} • ИИ: ${traderAction.note}` : reason;
+
+        // Вето ИИ: сделка отменена, но запоминаем «как бы» вход —
+        // если он оказался бы прибыльным, доверие к правилу снизится (обучение на ошибках)
+        if (traderAction?.type === "VETO") {
+            const vetoExpiry = Math.max(60, Number(state.expirySeconds) || 120);
+            traderRules.forEach((ruleKey) => rememberVeto(ruleKey, finalIsBuy, latestClose, vetoExpiry));
+            return {
+                ...common,
+                status: "NO_TRADE", isBuy: null,
+                reasonCode: "context_veto", reason: finalReason
+            };
+        }
+
         return {
             ...common,
-            status: resolvedIsBuy ? "BUY" : "SELL",
+            status: finalIsBuy ? "BUY" : "SELL",
             reasonCode: rangeSetup ? "range_bias" : unsafe ? "volatile_bias" : "trend_alignment",
-            reason
+            reason: finalReason
         };
     }
 
@@ -2863,6 +3002,111 @@ ensureDefaultModel();
             if (!valid.length) return null;
             return valid.filter(item => item.outcome === "win").length / valid.length;
         } catch (_) { return null; }
+    }
+
+    // === Локальная ИИ: обучаемые веса факторов и доверие к правилам ===
+    const AI_FACTORS_KEY = "ps_ai_factors_v1";
+    const AI_VETO_KEY = "ps_ai_vetoes_v1";
+    const AI_RULES_KEY = "ps_ai_rules_v1";
+
+    function loadAiFactors(){
+        try {
+            const stored = JSON.parse(localStorage.getItem(AI_FACTORS_KEY) || "{}");
+            return stored && typeof stored === "object" ? stored : {};
+        } catch (_) { return {}; }
+    }
+
+    function getAiScoreAdjustment(votes){
+        try {
+            const rel = loadAiFactors();
+            let sum = 0;
+            let weight = 0;
+            Object.entries(votes || {}).forEach(([key, vote]) => {
+                if (!vote) return;
+                const factorReliability = Number.isFinite(rel[key]) ? rel[key] : 1;
+                sum += vote * factorReliability;
+                weight += factorReliability;
+            });
+            const bias = weight ? sum / weight : 0;
+            return { bias, score: bias * 2.0 };
+        } catch (_) { return { bias: 0, score: 0 }; }
+    }
+
+    // Обучение: после закрытия сделки корректируем доверие к факторам,
+    // которые голосовали в её направлении (или против)
+    function learnAiFactors(votes, isBuy, isWin){
+        try {
+            const rel = loadAiFactors();
+            Object.entries(votes || {}).forEach(([key, vote]) => {
+                if (!vote) return;
+                const factorReliability = Number.isFinite(rel[key]) ? rel[key] : 1;
+                const agreed = (vote > 0 && isBuy) || (vote < 0 && !isBuy);
+                const next = agreed
+                    ? factorReliability * (isWin ? 1.08 : 0.92)
+                    : factorReliability * (isWin ? 0.97 : 1.04);
+                rel[key] = Math.min(1.7, Math.max(0.35, next));
+            });
+            localStorage.setItem(AI_FACTORS_KEY, JSON.stringify(rel));
+        } catch (_) {}
+    }
+
+    function loadVetoLog(){
+        try {
+            const stored = JSON.parse(localStorage.getItem(AI_VETO_KEY) || "[]");
+            return Array.isArray(stored) ? stored : [];
+        } catch (_) { return []; }
+    }
+
+    // Запоминаем отменённые ИИ входы, чтобы позже проверить, было ли вето верным
+    function rememberVeto(ruleKey, isBuy, entryPrice, expirySeconds){
+        try {
+            const log = loadVetoLog();
+            log.push({ key: ruleKey, isBuy, entryPrice, matureAt: Date.now() + expirySeconds * 1000 });
+            localStorage.setItem(AI_VETO_KEY, JSON.stringify(log.slice(-40)));
+        } catch (_) {}
+    }
+
+    function loadRuleTrustMap(){
+        try {
+            const stored = JSON.parse(localStorage.getItem(AI_RULES_KEY) || "{}");
+            return stored && typeof stored === "object" ? stored : {};
+        } catch (_) { return {}; }
+    }
+
+    function getRuleTrust(key){
+        const entry = loadRuleTrustMap()[key];
+        return entry && Number.isFinite(entry.trust) ? entry.trust : 1;
+    }
+
+    function saveRuleOutcome(key, vetoWasRight){
+        try {
+            const map = loadRuleTrustMap();
+            const entry = map[key] && Number.isFinite(map[key].trust) ? map[key] : { trust: 1, checks: 0 };
+            entry.checks = (Number(entry.checks) || 0) + 1;
+            // Вето было верным → доверие растёт; вето ошиблось (вход был бы прибыльным) → падает
+            entry.trust = Math.min(1.5, Math.max(0.5, entry.trust * (vetoWasRight ? 1.08 : 0.9)));
+            map[key] = entry;
+            localStorage.setItem(AI_RULES_KEY, JSON.stringify(map));
+        } catch (_) {}
+    }
+
+    // Проверяем «созревшие» вето: если отменённый вход оказался бы прибыльным —
+    // правило ошиблось, доверие к нему падает; если убыточным — правило право
+    function settleVetoes(currentClose){
+        try {
+            if (!Number.isFinite(currentClose)) return;
+            const now = Date.now();
+            const log = loadVetoLog();
+            const pending = [];
+            let changed = false;
+            log.forEach((item) => {
+                if (now < item.matureAt) { pending.push(item); return; }
+                changed = true;
+                const wouldHaveWon = item.isBuy ? currentClose > item.entryPrice : currentClose < item.entryPrice;
+                saveRuleOutcome(item.key, !wouldHaveWon);
+            });
+            if (changed) localStorage.setItem(AI_VETO_KEY, JSON.stringify(pending.slice(-40)));
+        } catch (_) {}
     }
 
     function localSignalReasoner(features){
@@ -2959,9 +3203,9 @@ ensureDefaultModel();
         inlineResult?.setAttribute("hidden", "");
         inlineTradeOutcome?.setAttribute("hidden", "");
         inlinePanel?.classList.remove("is-buy", "is-sell");
-        directionVisual?.classList.remove("is-waiting");
-        inlineResult?.classList.remove("is-waiting");
-        inlinePanel?.classList.remove("is-waiting");
+        directionVisual?.classList.remove("is-waiting", "is-blocked");
+        inlineResult?.classList.remove("is-waiting", "is-blocked");
+        inlinePanel?.classList.remove("is-waiting", "is-blocked");
         chartOverlay?.setAttribute("hidden", "");
         chartOverlay?.classList.remove("signal-persistent");
         chartOverlay?.classList.remove("outcome-win", "outcome-loss");
