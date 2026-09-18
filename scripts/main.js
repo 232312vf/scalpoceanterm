@@ -2912,6 +2912,13 @@ ensureDefaultModel();
         let traderAction = null;
         const ruleFires = (key) => getRuleTrust(key) >= 0.75;
 
+        // R0: боковик — не торгуем вовсе (отбои от границ отключены).
+        // Если исторически такие ситуации давали плюс, память повторений отменит вето
+        if (rangeSetup) {
+            traderRules.push("range_no_trade");
+            traderAction = { type: "VETO", note: "рынок в боковике — пропускаем" };
+        }
+
         // R1: покупка у проверенного сопротивления после затяжного роста
         if (resolvedIsBuy && atResistanceZone && (resistanceTested || exhaustionUp) && ruleFires("buy_into_resistance")) {
             traderRules.push("buy_into_resistance");
@@ -2952,6 +2959,16 @@ ensureDefaultModel();
         if (!traderAction && resolvedIsBuy && exhaustionUp && rsi >= 70 && ruleFires("exhaustion")) {
             traderRules.push("exhaustion");
             traderAction = { type: "VETO", note: "рынок перекуплен — не покупаем на хае" };
+        }
+        // R6: сильный жёсткий импульс — не входим в его направлении сразу,
+        // после таких свечей часто идёт коррекция (продаём на дне / покупаем на хае)
+        if (!traderAction && !resolvedIsBuy && (impulse <= -2.0 || (expansion >= 1.9 && bodyStrength <= -0.5)) && ruleFires("strong_impulse")) {
+            traderRules.push("strong_impulse");
+            traderAction = { type: "VETO", note: "сильный импульс вниз — не продаём на дне, ждём коррекцию" };
+        }
+        if (!traderAction && resolvedIsBuy && (impulse >= 2.0 || (expansion >= 1.9 && bodyStrength >= 0.5)) && ruleFires("strong_impulse")) {
+            traderRules.push("strong_impulse");
+            traderAction = { type: "VETO", note: "сильный импульс вверх — не покупаем на хае, ждём коррекцию" };
         }
         const finalIsBuy = traderAction?.type === "FLIP" ? traderAction.direction : resolvedIsBuy;
         const finalPBuy = finalIsBuy ? Math.max(pBuy, pSell) : Math.min(pBuy, pSell);
