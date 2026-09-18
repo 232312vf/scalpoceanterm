@@ -2927,11 +2927,19 @@ ensureDefaultModel();
         const insideResistanceZone = zoneContext.insideResistance;
 
         const trendBias = Math.sign(fastEma - slowEma);
+        // В тренде RSI 70+ = СИЛА тренда (тренд продолжается), а не разворот.
+        // Разворотный RSI (70+ → SELL) учитываем только в боковике
+        const rsiVote = dominantTrend > 0
+            ? (rsi >= 50 ? 0.6 : 0)
+            : dominantTrend < 0
+                ? (rsi <= 50 ? -0.6 : 0)
+                : (rsi < 35 ? 1 : rsi > 65 ? -1 : Math.sign(rsi - 50) * 0.5);
         const trendScore = trendBias * 2
+            + dominantTrend * 2.2
             + Math.sign(impulse) * 1.7
             + Math.sign(candleBias) * 1
             + Math.sign(bodyStrength) * (volumeRatio >= 0.9 ? 1 : 0.4)
-            + (rsi < 35 ? 1 : rsi > 65 ? -1 : Math.sign(rsi - 50) * 0.5)
+            + rsiVote
             + (bullishPattern ? 1.5 : bearishPattern ? -1.5 : 0)
             + (breakoutUp ? 2.5 : breakoutDown ? -2.5 : 0);
         const rangeScore = (rejectedSupport ? 4 : 0)
@@ -2944,7 +2952,7 @@ ensureDefaultModel();
         const aiVotes = {
             trend: Math.sign(fastEma - slowEma),
             impulse: Math.sign(impulse),
-            rsi: rsi <= 35 ? 1 : rsi >= 65 ? -1 : 0,
+            rsi: rsiVote,
             pattern: bullishPattern ? 1 : bearishPattern ? -1 : 0,
             volume: volumeRatio >= 1.15 ? Math.sign(latestBody) : 0,
             level: atSupportZone ? 1 : atResistanceZone ? -1 : 0,
@@ -3113,17 +3121,16 @@ ensureDefaultModel();
             dataFreshnessMs: container?._lastMarketMessageAt
                 ? Date.now() - container._lastMarketMessageAt : null
         };
+        const directionWord = finalDirectionIsBuy ? "BUY" : "SELL";
         const reason = rangeSetup
             ? (nearSupport && !nearResistance
-                ? "BUY от нижней границы боковика"
+                ? `${directionWord} от нижней границы боковика`
                 : nearResistance && !nearSupport
-                    ? "SELL от верхней границы боковика"
-                    : resolvedIsBuy
-                        ? "BUY по перевесу факторов в боковике"
-                        : "SELL по перевесу факторов в боковике")
+                    ? `${directionWord} от верхней границы боковика`
+                    : `${directionWord} по перевесу факторов в боковике`)
             : unsafe
-                ? (resolvedIsBuy ? "BUY • повышенная волатильность" : "SELL • повышенная волатильность")
-                : (resolvedIsBuy ? "TREND continuation вверх" : "TREND continuation вниз");
+                ? `${directionWord} • повышенная волатильность`
+                : `TREND continuation ${finalDirectionIsBuy ? "вверх" : "вниз"}`;
         // === Логика повторений: как отрабатывали похожие ситуации раньше ===
         const zoneZone = atSupportZone ? (supportZoneHolds ? "sup-hold" : supportZoneBreaks ? "sup-break" : "sup")
             : atResistanceZone ? (resistanceZoneHolds ? "res-hold" : resistanceZoneBreaks ? "res-break" : "res") : "";
