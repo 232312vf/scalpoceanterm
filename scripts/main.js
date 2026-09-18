@@ -2481,6 +2481,22 @@ ensureDefaultModel();
                 try { finishSignal(pair, true); } catch (_) {}
             }
         }, 75000));
+        // Мульти-страховка: проверяем каждые 15 секунд — если поток встал
+        // (ни сделки, ни ожидания свечи, ни блокировки) — принудительный вход
+        [15000, 30000, 45000, 60000, 75000, 90000].forEach((guardDelay) => {
+            signalTimers.push(setTimeout(() => {
+                try {
+                    const running = document.body.classList.contains("signal-running");
+                    const blockedNow = inlinePanel?.classList.contains("is-blocked");
+                    const waitingNow = inlinePanel?.classList.contains("is-waiting");
+                    if (running && !currentTrade && !blockedNow && !waitingNow) {
+                        finishSignal(pair, true);
+                    }
+                } catch (_) {
+                    try { finishSignal(pair, true); } catch (_) {}
+                }
+            }, guardDelay));
+        });
     }
 
     // Показ состояния «сейчас не лучшее время» (крестик + причина + смена пары)
