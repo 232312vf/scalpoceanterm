@@ -2867,12 +2867,29 @@ ensureDefaultModel();
             && bodyStrength >= 0.45 && volumeRatio >= 1.05 && latestClose >= Number(previous.close);
         const bearishAbsorption = priorBullish && latestClose < latestOpen
             && bodyStrength <= -0.45 && volumeRatio >= 1.05 && latestClose <= Number(previous.close);
+        // Усталость движения (серии свечей) и доминирующий тренд (~26 свечей).
+        // Считаем ДО определения режима: если тренд есть — это не боковик
+        let rallyStreak = 0;
+        let dumpStreak = 0;
+        for (let i = recent.length - 1; i >= 0; i -= 1) {
+            const bullish = Number(recent[i].close) >= Number(recent[i].open);
+            if (bullish) { if (dumpStreak) break; rallyStreak += 1; }
+            else { if (rallyStreak) break; dumpStreak += 1; }
+        }
+        const exhaustionUp = rallyStreak >= 4 || impulse > 2.3;
+        const exhaustionDown = dumpStreak >= 4 || impulse < -2.3;
+        const trendLookback = Math.min(recent.length - 1, 26);
+        const dominantShift = (latestClose - Number(recent[recent.length - 1 - trendLookback].close)) / Math.max(averageRange, 1e-9);
+        const dominantTrend = dominantShift > 1.6 ? 1 : dominantShift < -1.6 ? -1 : 0;
         const levelWindow = recent.slice(-16, -1);
         const resistance = Math.max(...levelWindow.map((candle) => Number(candle.high)));
         const support = Math.min(...levelWindow.map((candle) => Number(candle.low)));
         const rangeSize = Math.max(resistance - support, 1e-9);
+        // Боковик = нет диапазона И нет доминирующего тренда.
+        // Нисходящая структура с отскоком — это тренд вниз, а не «боковик»
         const rangeMarket = rangeSize <= averageRange * 8
-            && Math.abs(fastEma - slowEma) <= averageRange * 1.25;
+            && Math.abs(fastEma - slowEma) <= averageRange * 1.25
+            && dominantTrend === 0;
         const levelTolerance = Math.max(averageRange * SIGNAL_CONFIG.levelToleranceAtr, latestClose * 0.00025);
         const rangePosition = clampSignal((latestClose - support) / rangeSize, 0, 1);
         const nearSupport = rangePosition <= SIGNAL_CONFIG.rangePositionEdge
@@ -2908,20 +2925,6 @@ ensureDefaultModel();
         const supportTested = zoneContext.supportTouches >= 2;
         const insideSupportZone = zoneContext.insideSupport;
         const insideResistanceZone = zoneContext.insideResistance;
-
-        // Усталость движения (серии свечей в одну сторону) и доминирующий тренд (глубокий, ~26 свечей)
-        let rallyStreak = 0;
-        let dumpStreak = 0;
-        for (let i = recent.length - 1; i >= 0; i -= 1) {
-            const bullish = Number(recent[i].close) >= Number(recent[i].open);
-            if (bullish) { if (dumpStreak) break; rallyStreak += 1; }
-            else { if (rallyStreak) break; dumpStreak += 1; }
-        }
-        const exhaustionUp = rallyStreak >= 4 || impulse > 2.3;
-        const exhaustionDown = dumpStreak >= 4 || impulse < -2.3;
-        const trendLookback = Math.min(recent.length - 1, 26);
-        const dominantShift = (latestClose - Number(recent[recent.length - 1 - trendLookback].close)) / Math.max(averageRange, 1e-9);
-        const dominantTrend = dominantShift > 1.6 ? 1 : dominantShift < -1.6 ? -1 : 0;
 
         const trendBias = Math.sign(fastEma - slowEma);
         const trendScore = trendBias * 2
