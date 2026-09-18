@@ -2859,43 +2859,22 @@ ensureDefaultModel();
             || volumeRatio < 0.35
             || !Number.isFinite(rsi);
 
-        // === Память трейдера: уровни поддержки/сопротивления по длинной истории (до 140 свечей) ===
+        // === Карта зон: поддержки/сопротивления по повторениям + обновление при пробое ===
         settleVetoes(latestClose);
         const memory = data.slice(-140).filter((candle) =>
             Number.isFinite(Number(candle.open)) && Number.isFinite(Number(candle.high))
             && Number.isFinite(Number(candle.low)) && Number.isFinite(Number(candle.close)));
-        const pivotTolerance = Math.max(averageRange * 0.18, latestClose * 0.00012);
-        const swingHighs = [];
-        const swingLows = [];
-        for (let i = 2; i < memory.length - 2; i += 1) {
-            const swingHigh = Number(memory[i].high);
-            const swingLow = Number(memory[i].low);
-            const isSwingHigh = [1, 2, -1, -2].every((offset) => swingHigh >= Number(memory[i + offset].high) - pivotTolerance * 0.25);
-            const isSwingLow = [1, 2, -1, -2].every((offset) => swingLow <= Number(memory[i + offset].low) + pivotTolerance * 0.25);
-            if (isSwingHigh) swingHighs.push({ price: swingHigh, at: i });
-            if (isSwingLow) swingLows.push({ price: swingLow, at: i });
-        }
-        const clusterLevels = (pivots) => {
-            const levels = [];
-            pivots.forEach((pivot) => {
-                const existing = levels.find((level) => Math.abs(level.price - pivot.price) <= pivotTolerance);
-                if (existing) { existing.touches += 1; existing.lastAt = Math.max(existing.lastAt, pivot.at); }
-                else levels.push({ price: pivot.price, touches: 1, lastAt: pivot.at });
-            });
-            return levels;
-        };
-        const resistanceLevels = clusterLevels(swingHighs);
-        const supportLevels = clusterLevels(swingLows);
-        const nearestOf = (levels) => levels
-            .map((level) => ({ ...level, distAtr: (level.price - latestClose) / Math.max(averageRange, 1e-9) }))
-            .filter((level) => Math.abs(level.distAtr) <= 0.75)
-            .sort((a, b) => Math.abs(a.distAtr) - Math.abs(b.distAtr))[0] || null;
-        const nearbyResistance = nearestOf(resistanceLevels);
-        const nearbySupport = nearestOf(supportLevels);
-        const atResistanceZone = !!nearbyResistance;
-        const atSupportZone = !!nearbySupport;
-        const resistanceTested = !!nearbyResistance && nearbyResistance.touches >= 2;
-        const supportTested = !!nearbySupport && nearbySupport.touches >= 2;
+        const zoneContext = analyzeZones(memory, latestClose, averageRange);
+        const atResistanceZone = zoneContext.atResistanceZone;
+        const atSupportZone = zoneContext.atSupportZone;
+        const resistanceZoneHolds = zoneContext.resistanceHolds;
+        const supportZoneHolds = zoneContext.supportHolds;
+        const resistanceZoneBreaks = zoneContext.resistanceBreaks;
+        const supportZoneBreaks = zoneContext.supportBreaks;
+        const resistanceTested = zoneContext.resistanceTouches >= 2;
+        const supportTested = zoneContext.supportTouches >= 2;
+        const insideSupportZone = zoneContext.insideSupport;
+        const insideResistanceZone = zoneContext.insideResistance;
 
         // Усталость движения (серии свечей в одну сторону) и доминирующий тренд (глубокий, ~26 свечей)
         let rallyStreak = 0;
@@ -2935,7 +2914,13 @@ ensureDefaultModel();
             level: atSupportZone ? 1 : atResistanceZone ? -1 : 0,
             breakout: breakoutUp ? 1 : breakoutDown ? -1 : 0,
             momentum: (rallyStreak >= 3 && dominantTrend >= 0) ? 1 : (dumpStreak >= 3 && dominantTrend <= 0) ? -1 : 0,
-            absorption: bullishAbsorption ? 1 : bearishAbsorption ? -1 : 0
+            absorption: bullishAbsorption ? 1 : bearishAbsorption ? -1 : 0,
+            // Голос по зонам: держащая поддержка → вверх, держащее сопротивление → вниз,
+            // а зона, которую постоянно пробивают, работает наоборот
+            zone: (atSupportZone && supportZoneHolds) ? 1
+                : (atResistanceZone && resistanceZoneHolds) ? -1
+                    : (atResistanceZone && resistanceZoneBreaks) ? 1
+                        : (atSupportZone && supportZoneBreaks) ? -1 : 0
         };
         const aiAdjust = getAiScoreAdjustment(aiVotes);
         const score = (rangeMarket && !breakoutUp && !breakoutDown ? rangeScore : trendScore) + aiAdjust.score
@@ -2980,25 +2965,26 @@ ensureDefaultModel();
         }
 
         // R1: покупка у проверенного сопротивления после затяжного роста
-        if (resolvedIsBuy && atResistanceZone && (resistanceTested || exhaustionUp) && ruleFires("buy_into_resistance")) {
+        if (resolvedIsBuy && atResistanceZone && (resistanceTested || resistanceZoneHolds || exhaustionUp) && ruleFires("buy_into_resistance")) {
             traderRules.push("buy_into_resistance");
             traderAction = bearishPattern || upperWick >= latestRange * 0.4
                 ? { type: "FLIP", direction: false, note: "отбой от проверенного сопротивления, покупка на хаях опасна" }
                 : { type: "VETO", note: "цена у проверенного сопротивления после затяжного роста" };
         }
         // R2: продажа от проверенной поддержки после затяжного падения
-        if (!traderAction && !resolvedIsBuy && atSupportZone && (supportTested || exhaustionDown) && ruleFires("sell_into_support")) {
+        if (!traderAction && !resolvedIsBuy && atSupportZone && (supportTested || supportZoneHolds || exhaustionDown) && ruleFires("sell_into_support")) {
             traderRules.push("sell_into_support");
             traderAction = bullishPattern || lowerWick >= latestRange * 0.4 || rsi <= 34
                 ? { type: "FLIP", direction: true, note: "отбой от проверенной поддержки, рынок перепродан" }
                 : { type: "VETO", note: "цена у проверенной поддержки — не продаём на дне, ждём отбой" };
         }
-        // R3: «вобанк» на пробое заезженного уровня без объёма
-        if (!traderAction && resolvedIsBuy && breakoutUp && resistanceTested && volumeRatio < 1.35 && ruleFires("stale_breakout")) {
+        // R3: «вобанк» на пробое заезженного уровня без объёма.
+        // Но если зону исторически постоянно пробивают — пробою доверяем
+        if (!traderAction && resolvedIsBuy && breakoutUp && resistanceTested && !resistanceZoneBreaks && volumeRatio < 1.35 && ruleFires("stale_breakout")) {
             traderRules.push("stale_breakout");
             traderAction = { type: "VETO", note: "пробой заезженного уровня без подтверждения объёмом" };
         }
-        if (!traderAction && !resolvedIsBuy && breakoutDown && supportTested && volumeRatio < 1.35 && ruleFires("stale_breakout")) {
+        if (!traderAction && !resolvedIsBuy && breakoutDown && supportTested && !supportZoneBreaks && volumeRatio < 1.35 && ruleFires("stale_breakout")) {
             traderRules.push("stale_breakout");
             traderAction = { type: "VETO", note: "пробой заезженного уровня без подтверждения объёмом" };
         }
@@ -3078,7 +3064,9 @@ ensureDefaultModel();
             levelZone: atSupportZone ? "sup" : atResistanceZone ? "res" : "",
             volumeElevated: volumeRatio >= 1.15,
             exhaustion: exhaustionUp ? "up" : exhaustionDown ? "down" : "",
-            absorptionZone: bullishAbsorption ? "up" : bearishAbsorption ? "down" : ""
+            absorptionZone: bullishAbsorption ? "up" : bearishAbsorption ? "down" : "",
+            zoneZone: atSupportZone ? (supportZoneHolds ? "sup-hold" : supportZoneBreaks ? "sup-break" : "sup")
+                : atResistanceZone ? (resistanceZoneHolds ? "res-hold" : resistanceZoneBreaks ? "res-break" : "res") : ""
         });
         const patternRate = getPatternWinRate(patternKey);
         let vetoedByAi = traderAction?.type === "VETO" || false;
@@ -3281,6 +3269,111 @@ ensureDefaultModel();
         if (impulse < -1) return "down";
         return "flat";
     }
+    // === Карта зон: ИИ мысленно расставляет зоны поддержки/сопротивления,
+    // считает повторения (сколько раз отбивалась цена) и обновляет зоны при пробое ===
+    function analyzeZones(memory, latestClose, averageRange){
+        const empty = {
+            supportZone: null, resistanceZone: null,
+            atSupportZone: false, atResistanceZone: false,
+            supportHolds: false, resistanceHolds: false,
+            supportBreaks: false, resistanceBreaks: false,
+            supportTouches: 0, resistanceTouches: 0,
+            insideSupport: false, insideResistance: false, zoneMap: []
+        };
+        if (!Array.isArray(memory) || memory.length < 12 || !Number.isFinite(latestClose)) return empty;
+
+        const zoneTolerance = Math.max(averageRange * 0.55, latestClose * 0.0004);
+        const points = [];
+        for (let i = 2; i < memory.length - 2; i += 1) {
+            const high = Number(memory[i].high);
+            const low = Number(memory[i].low);
+            if (!Number.isFinite(high) || !Number.isFinite(low)) continue;
+            const isSwingHigh = [1, 2, -1, -2].every((o) => high >= Number(memory[i + o].high) - zoneTolerance * 0.2);
+            const isSwingLow = [1, 2, -1, -2].every((o) => low <= Number(memory[i + o].low) + zoneTolerance * 0.2);
+            if (isSwingHigh) points.push({ price: high, at: i });
+            if (isSwingLow) points.push({ price: low, at: i });
+        }
+
+        // Кластеризация свинг-точек в зоны (полосы цены, а не тонкие линии)
+        const zones = [];
+        points.sort((a, b) => a.price - b.price).forEach((point) => {
+            const zone = zones.find((z) => point.price >= z.low - zoneTolerance && point.price <= z.high + zoneTolerance);
+            if (zone) {
+                zone.low = Math.min(zone.low, point.price);
+                zone.high = Math.max(zone.high, point.price);
+                zone.touches += 1;
+                zone.lastAt = Math.max(zone.lastAt, point.at);
+            } else {
+                zones.push({ low: point.price, high: point.price, touches: 1, lastAt: point.at });
+            }
+        });
+
+        // Повторения: тесты зоны, отбои и пробои по истории
+        zones.forEach((zone) => {
+            let tests = 0;
+            let holds = 0;
+            let breaks = 0;
+            for (let i = 1; i < memory.length - 3; i += 1) {
+                const candle = memory[i];
+                const candleHigh = Number(candle.high);
+                const candleLow = Number(candle.low);
+                const touched = candleHigh >= zone.low - zoneTolerance * 0.35 && candleLow <= zone.high + zoneTolerance * 0.35;
+                if (!touched) continue;
+                tests += 1;
+                const forward = memory.slice(i + 1, i + 4).map((c) => Number(c.close));
+                const brokeUp = forward.some((value) => value > zone.high + zoneTolerance * 0.35);
+                const brokeDown = forward.some((value) => value < zone.low - zoneTolerance * 0.35);
+                if (brokeUp || brokeDown) breaks += 1;
+                else holds += 1;
+            }
+            zone.tests = tests;
+            zone.holds = holds;
+            zone.breaks = breaks;
+            zone.holdRate = tests >= 2 ? holds / tests : null;
+            zone.center = (zone.low + zone.high) / 2;
+            zone.weak = tests >= 3 && zone.holdRate !== null && zone.holdRate <= 0.4;
+        });
+
+        // Обновление зон: пробитая зона меняет роль (поддержка ⇄ сопротивление)
+        zones.forEach((zone) => {
+            const closedAbove = latestClose > zone.high + zoneTolerance * 0.4;
+            const closedBelow = latestClose < zone.low - zoneTolerance * 0.4;
+            if (closedAbove) zone.role = "support";
+            else if (closedBelow) zone.role = "resistance";
+            else zone.role = zone.center >= latestClose ? "resistance" : "support";
+        });
+
+        const distanceTo = (zone) => {
+            if (latestClose < zone.low) return zone.low - latestClose;
+            if (latestClose > zone.high) return latestClose - zone.high;
+            return 0;
+        };
+        const supportZone = zones
+            .filter((zone) => zone.role === "support" && zone.high <= latestClose + zoneTolerance * 0.5)
+            .map((zone) => ({ ...zone, distance: distanceTo(zone) }))
+            .sort((a, b) => a.distance - b.distance)[0] || null;
+        const resistanceZone = zones
+            .filter((zone) => zone.role === "resistance" && zone.low >= latestClose - zoneTolerance * 0.5)
+            .map((zone) => ({ ...zone, distance: distanceTo(zone) }))
+            .sort((a, b) => a.distance - b.distance)[0] || null;
+
+        const zoneRange = averageRange * 0.7;
+        return {
+            supportZone, resistanceZone,
+            atSupportZone: !!supportZone && supportZone.distance <= zoneRange,
+            atResistanceZone: !!resistanceZone && resistanceZone.distance <= zoneRange,
+            supportHolds: !!supportZone && supportZone.holdRate !== null && supportZone.holdRate >= 0.55,
+            resistanceHolds: !!resistanceZone && resistanceZone.holdRate !== null && resistanceZone.holdRate >= 0.55,
+            supportBreaks: !!supportZone && supportZone.holdRate !== null && supportZone.holdRate <= 0.4,
+            resistanceBreaks: !!resistanceZone && resistanceZone.holdRate !== null && resistanceZone.holdRate <= 0.4,
+            supportTouches: supportZone ? supportZone.touches : 0,
+            resistanceTouches: resistanceZone ? resistanceZone.touches : 0,
+            insideSupport: !!supportZone && latestClose >= supportZone.low && latestClose <= supportZone.high,
+            insideResistance: !!resistanceZone && latestClose >= resistanceZone.low && latestClose <= resistanceZone.high,
+            zoneMap: zones
+        };
+    }
+
     function buildPatternKey(parts){
         return [
             parts.regime,
@@ -3291,7 +3384,8 @@ ensureDefaultModel();
             parts.levelZone ? `level:${parts.levelZone}` : "",
             parts.volumeElevated ? "vol" : "",
             parts.exhaustion ? `exh:${parts.exhaustion}` : "",
-            parts.absorptionZone ? `abs:${parts.absorptionZone}` : ""
+            parts.absorptionZone ? `abs:${parts.absorptionZone}` : "",
+            parts.zoneZone ? `zone:${parts.zoneZone}` : ""
         ].filter(Boolean).join("|");
     }
 
@@ -3343,22 +3437,9 @@ ensureDefaultModel();
             || (latestClose < latestOpen && latestOpen >= Number(previous.close) && latestClose <= Number(previous.open));
         const expansion = latestRange / Math.max(averageRange, 1e-9);
         // buildHistoricalContext: индикаторы посчитаны, формируем контекст ситуации
-        const pivotTolerance = Math.max(averageRange * 0.18, latestClose * 0.00012);
-        const pivots = [];
-        for (let i = 2; i < memory.length - 2; i += 1) {
-            const high = Number(memory[i].high);
-            const low = Number(memory[i].low);
-            const isSwingHigh = [1, 2, -1, -2].every((offset) => high >= Number(memory[i + offset].high) - pivotTolerance * 0.25);
-            const isSwingLow = [1, 2, -1, -2].every((offset) => low <= Number(memory[i + offset].low) + pivotTolerance * 0.25);
-            if (isSwingHigh) pivots.push({ price: high, kind: 1 });
-            if (isSwingLow) pivots.push({ price: low, kind: -1 });
-        }
-        const nearLevel = pivots
-            .map((pivot) => ({ ...pivot, distAtr: (pivot.price - latestClose) / Math.max(averageRange, 1e-9) }))
-            .filter((pivot) => Math.abs(pivot.distAtr) <= 0.75)
-            .sort((a, b) => Math.abs(a.distAtr) - Math.abs(b.distAtr))[0] || null;
-        const atSupportZone = !!nearLevel && nearLevel.kind === -1;
-        const atResistanceZone = !!nearLevel && nearLevel.kind === 1;
+        const zoneContext = analyzeZones(memory, latestClose, averageRange);
+        const atSupportZone = zoneContext.atSupportZone;
+        const atResistanceZone = zoneContext.atResistanceZone;
 
         let rallyStreak = 0;
         let dumpStreak = 0;
