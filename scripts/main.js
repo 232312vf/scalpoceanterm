@@ -2347,6 +2347,14 @@ ensureDefaultModel();
     }
     function msUntilNextCandleOpen(){
         const period = currentCandlePeriodMs();
+        // Опираемся на время свечи из фида Binance, а не на часы телефона —
+        // так таймер не «сбивается» при расхождении часов устройства с биржей
+        const lastCandleSeconds = Number(chartWidget?._lastCandle?.time);
+        if (Number.isFinite(lastCandleSeconds) && lastCandleSeconds > 0) {
+            const nextOpenMs = (lastCandleSeconds + period / 1000) * 1000;
+            const delta = nextOpenMs - Date.now();
+            if (delta > -period && delta <= period * 2) return Math.max(delta, 0);
+        }
         return period - (Date.now() % period);
     }
     function fmtClock(date){
@@ -2482,10 +2490,10 @@ ensureDefaultModel();
             const positionInCandle = (candleClose - candleLow) / candleRange;
             const directionClear = probe.status !== "NO_TRADE"
                 && probe.isBuy != null
-                && (probe.probability >= 0.58 || probe.confidence >= 0.42);
+                && (probe.probability >= 0.55 || probe.confidence >= 0.38);
             const atBadExtreme = probe.isBuy
-                ? positionInCandle >= 0.78   // покупать у вершины свечи — плохо, ждём новую
-                : positionInCandle <= 0.22;  // продавать у дна свечи — плохо, ждём новую
+                ? positionInCandle >= 0.82   // покупать у вершины свечи — плохо, ждём новую
+                : positionInCandle <= 0.18;  // продавать у дна свечи — плохо, ждём новую
             if (!directionClear || atBadExtreme) {
                 waitForNextCandle();
                 return;
