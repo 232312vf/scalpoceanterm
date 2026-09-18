@@ -52,6 +52,17 @@
                         </div>
                         <div class="chart-api-title">ГРАФИК ПОДКЛЮЧЁН К API</div>
                     </div>
+                    <div class="trade-result-overlay" id="tradeResultChartOverlay" hidden>
+                        <div class="trade-result-icon" aria-hidden="true">
+                            <svg viewBox="0 0 120 120" focusable="false">
+                                <circle class="tr-ring" cx="60" cy="60" r="46"/>
+                                <g class="tr-sign tr-plus"><line x1="32" y1="60" x2="90" y2="60"/><line x1="60" y1="30" x2="60" y2="88"/></g>
+                                <line class="tr-sign tr-minus" x1="32" y1="60" x2="90" y2="60"/>
+                            </svg>
+                        </div>
+                        <div class="trade-result-title" id="tradeResultTitle">УСПЕШНАЯ СДЕЛКА</div>
+                        <div class="trade-result-sub" id="tradeResultSub">ЕСЛИ СДЕЛКА НЕУДАЧНАЯ — УДВОЙТЕ СУММУ СДЕЛКИ НА x2.2, ЧТОБЫ ВЫЙТИ В ПЛЮС</div>
+                    </div>
                     <div class="signal-chart-overlay" id="signalChartOverlay" hidden>
                         <div class="signal-chart-visual" aria-hidden="true">
                             <svg viewBox="0 0 240 130" focusable="false">
@@ -167,6 +178,20 @@
                         <div class="inline-trade-outcome" id="inlineTradeOutcome" hidden>
                             <span class="inline-trade-outcome-icon" aria-hidden="true">✓</span>
                             <span id="inlineTradeOutcomeText">Сделка в плюсе</span>
+                        </div>
+                        <div class="inline-trade-result" id="inlineTradeResult" hidden>
+                            <div class="itr-icon" aria-hidden="true">
+                                <svg viewBox="0 0 120 120">
+                                    <circle class="itr-ring" cx="60" cy="60" r="46"/>
+                                    <g class="itr-sign itr-plus">
+                                        <line x1="32" y1="60" x2="90" y2="60"/>
+                                        <line x1="60" y1="30" x2="60" y2="90"/>
+                                    </g>
+                                    <line class="itr-sign itr-minus" x1="30" y1="60" x2="90" y2="60"/>
+                                </svg>
+                            </div>
+                            <div class="itr-title" id="inlineTradeResultTitle">УСПЕШНАЯ СДЕЛКА</div>
+                            <div class="itr-sub" id="inlineTradeResultSub">ЕСЛИ СДЕЛКА НЕУДАЧНАЯ — УДВОЙТЕ СУММУ СДЕЛКИ НА x2.2, ЧТОБЫ ВЫЙТИ В ПЛЮС</div>
                         </div>
                     </div>
                 </div>

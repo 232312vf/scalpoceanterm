@@ -261,6 +261,54 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
     opacity:0;
 }
 .chart-api-overlay[hidden]{display:none}
+
+/* === Результат сделки на графике: свечение + размытие (как при API), 4 секунды === */
+.trade-result-overlay{
+    position:absolute;
+    inset:0;
+    z-index:11;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:16px;
+    border-radius:10px;
+    color:#55e0b5;
+    background:rgba(4,14,10,.55);
+    backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);
+    opacity:0;
+}
+.trade-result-overlay.is-loss{background:rgba(15,4,8,.55);color:#ff7180}
+.trade-result-overlay[hidden]{display:none}
+.trade-result-overlay.is-win,
+.trade-result-overlay.is-loss{animation:chartApiOverlayIn .55s cubic-bezier(.22,1,.36,1) both}
+.trade-result-overlay.is-exiting{animation:chartApiOverlayOut .6s ease both}
+.trade-result-icon{width:96px;height:96px;display:grid;place-items:center;opacity:0;transform:scale(.55);animation:tradeResultIconIn .7s .08s cubic-bezier(.22,1,.36,1) forwards}
+.trade-result-overlay.is-win .trade-result-icon{color:#55e0b5;filter:drop-shadow(0 0 20px rgba(85,224,181,.5))}
+.trade-result-overlay.is-loss .trade-result-icon{color:#ff7180;filter:drop-shadow(0 0 16px rgba(255,113,128,.4))}
+.trade-result-icon svg{width:100%;height:100%;overflow:visible}
+.tr-ring{fill:rgba(255,255,255,.05);stroke:currentColor;stroke-width:5;stroke-dasharray:292;stroke-dashoffset:292;animation:tradeResultDraw .7s .05s cubic-bezier(.22,1,.36,1) forwards}
+.tr-sign line{stroke:currentColor;stroke-width:8;stroke-linecap:round;stroke-dasharray:64;stroke-dashoffset:64;animation:tradeResultDraw .45s .5s cubic-bezier(.22,1,.36,1) forwards}
+.trade-result-overlay.is-loss .tr-plus{display:none}
+.trade-result-overlay.is-win .tr-minus{display:none}
+.trade-result-title{
+    color:#f4f7fb;font-size:16px;font-weight:800;letter-spacing:.08em;text-align:center;
+    text-shadow:0 0 22px rgba(0,0,0,.9);
+    animation:signalTextIn .5s .5s cubic-bezier(.22,1,.36,1) both;
+}
+.trade-result-overlay.is-win .trade-result-title{color:#6df0bd;text-shadow:0 0 18px rgba(109,240,181,.4)}
+.trade-result-overlay.is-loss .trade-result-title{color:#ff7180;text-shadow:0 0 18px rgba(255,113,128,.4)}
+.trade-result-sub{
+    max-width:300px;padding:0 10px;
+    color:#aeb7c5;font-size:10px;font-weight:700;letter-spacing:.04em;line-height:1.5;text-align:center;
+    text-shadow:0 2px 12px rgba(0,0,0,.9);
+    animation:signalTextIn .5s .8s cubic-bezier(.22,1,.36,1) both;
+}
+.trade-result-overlay.is-win .trade-result-sub{display:none}
+@keyframes tradeResultDraw{to{stroke-dashoffset:0}}
+@keyframes tradeResultIconIn{from{opacity:0;transform:scale(.55)}to{opacity:1;transform:scale(1)}}
+/* === Конец результата на графике === */
 .chart-api-overlay-visible{animation:chartApiOverlayIn .55s cubic-bezier(.22,1,.36,1) both}
 .chart-api-overlay-exiting{animation:chartApiOverlayOut .6s ease both}
 .chart-api-check{
@@ -507,21 +555,50 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
     .blocked-ring,.blocked-cross{animation:none;stroke-dashoffset:0}
 }
 
-/* Причина блокировки: пояснение, почему ИИ не рекомендует вход */
-.inline-signal-reason{
-    position:relative;
+/* Итог сделки в блоке сигнала: круг с плюсом/минусом, БЕЗ размытия */
+.inline-trade-result{
+    position:absolute;
+    inset:0;
     z-index:2;
-    max-width:320px;
-    margin:10px auto 0;
-    padding:0 8px;
-    color:#aeb7c5;
-    font-size:12px;
-    font-weight:600;
-    line-height:1.45;
-    text-align:center;
-    text-shadow:0 2px 12px rgba(0,0,0,.9);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    color:#55e0b5;
+    background:rgba(5,13,10,.5);
+    animation:signalTextIn .5s cubic-bezier(.22,1,.36,1) both;
 }
-.inline-signal-reason[hidden]{display:none}
+.inline-trade-result.is-loss{background:rgba(15,5,9,.5);color:#ff7180}
+.inline-trade-result[hidden]{display:none}
+.itr-icon{width:88px;height:88px;display:grid;place-items:center;opacity:0;transform:scale(.55);animation:tradeResultIconIn .7s .05s cubic-bezier(.22,1,.36,1) forwards}
+.inline-trade-result.is-win .itr-icon{filter:drop-shadow(0 0 16px rgba(85,224,181,.4))}
+.inline-trade-result.is-loss .itr-icon{filter:drop-shadow(0 0 14px rgba(255,113,128,.35))}
+.itr-icon svg{width:100%;height:100%;overflow:visible}
+.itr-ring{fill:rgba(255,255,255,.05);stroke:currentColor;stroke-width:5;stroke-dasharray:292;stroke-dashoffset:292;animation:tradeResultDraw .7s .1s cubic-bezier(.22,1,.36,1) forwards}
+.itr-sign line{stroke:currentColor;stroke-width:8;stroke-linecap:round;stroke-dasharray:64;stroke-dashoffset:64;animation:tradeResultDraw .45s .45s cubic-bezier(.22,1,.36,1) forwards}
+.inline-trade-result .itr-minus{animation-delay:.2s}
+.inline-trade-result.is-loss .itr-plus{display:none}
+.inline-trade-result.is-win .itr-minus{display:none}
+.itr-title{
+    color:#f4f7fb;font-size:15px;font-weight:800;letter-spacing:.08em;text-align:center;
+    text-shadow:0 0 20px rgba(0,0,0,.9);
+    animation:signalTextIn .5s .5s cubic-bezier(.22,1,.36,1) both;
+}
+.inline-trade-result.is-win .itr-title{color:#6df0bd;text-shadow:0 0 16px rgba(109,240,181,.4)}
+.inline-trade-result.is-loss .itr-title{color:#ff7180;text-shadow:0 0 16px rgba(255,113,128,.35)}
+.itr-sub{
+    max-width:300px;padding:0 12px;
+    color:#aeb7c5;font-size:10px;font-weight:700;letter-spacing:.03em;line-height:1.5;text-align:center;
+    text-shadow:0 2px 12px rgba(0,0,0,.9);
+    animation:signalTextIn .5s .65s cubic-bezier(.22,1,.36,1) both;
+}
+.inline-trade-result.is-win .itr-sub{display:none}
+@media (prefers-reduced-motion:reduce){
+    .trade-result-overlay,.inline-trade-result{animation:none;opacity:1}
+    .trade-result-icon,.itr-icon,.trade-result-title,.trade-result-sub,.itr-title,.itr-sub{animation:none;opacity:1;transform:none}
+    .tr-ring,.tr-sign line,.itr-ring,.itr-sign line{animation:none;stroke-dashoffset:0}
+}
 
 /* Кнопка «Сменить пару» — показывается при пропуске входа */
 .no-trade-change-pair{
@@ -2417,6 +2494,10 @@ body.signal-running .glass-signal{display:none}
         backdrop-filter:blur(14px) !important;
         -webkit-backdrop-filter:blur(14px) !important;
         background:rgba(4,9,14,.55) !important;
+    }
+    .trade-result-overlay{
+        backdrop-filter:blur(14px) !important;
+        -webkit-backdrop-filter:blur(14px) !important;
     }
     .chart-widget.signal-active>div:not(.signal-chart-overlay):not(.chart-api-overlay){
         filter:none;

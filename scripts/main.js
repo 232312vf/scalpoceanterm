@@ -2712,6 +2712,41 @@ ensureDefaultModel();
         }, 1000);
     }
 
+    // Анимация итога сделки (4 сек): круг с плюсом/минусом + текст.
+    // На графике — со свечением и размытием (как при API), в блоке сигнала — без размытия
+    function showTradeResultOverlay(isWin){
+        const outcomeClass = isWin ? "is-win" : "is-loss";
+        const chartOverlayEl = q("tradeResultChartOverlay");
+        const inlineOverlayEl = q("inlineTradeResult");
+        [chartOverlayEl, inlineOverlayEl].forEach((overlay) => {
+            if (!overlay) return;
+            overlay.classList.remove("is-win", "is-loss", "is-exiting");
+            overlay.classList.add(outcomeClass);
+            overlay.removeAttribute("hidden");
+            void overlay.offsetWidth;
+        });
+        const titleText = isWin ? "УСПЕШНАЯ СДЕЛКА" : "НЕУДАЧНАЯ СДЕЛКА";
+        const chartTitle = q("tradeResultTitle");
+        if (chartTitle) chartTitle.textContent = titleText;
+        const inlineTitle = q("inlineTradeResultTitle");
+        if (inlineTitle) inlineTitle.textContent = isWin ? "УСПЕШНАЯ СДЕЛКА" : "НЕУДАЧНАЯ СДЕЛКА";
+        const subEl = q("tradeResultSub");
+        if (subEl) subEl.hidden = isWin;
+        const inlineSub = q("inlineTradeResultSub");
+        if (inlineSub) inlineSub.hidden = isWin;
+        // Анимация живёт 4 секунды, затем плавно уходит
+        signalTimers.push(setTimeout(() => {
+            chartOverlayEl?.classList.add("is-exiting");
+            inlineOverlayEl?.classList.add("is-exiting");
+        }, 3400));
+        signalTimers.push(setTimeout(() => {
+            chartOverlayEl?.setAttribute("hidden", "");
+            inlineOverlayEl?.setAttribute("hidden", "");
+            chartOverlayEl?.classList.remove("is-exiting");
+            inlineOverlayEl?.classList.remove("is-exiting");
+        }, 4000));
+    }
+
     function settleTrade(){
         const trade = currentTrade;
         if (!trade) {
@@ -2741,6 +2776,7 @@ ensureDefaultModel();
         recordTradeOutcome({ pair: trade.pair, isBuy: trade.isBuy, isWin });
         recordSignalStats(trade, outcome, close);
         showTradeOutcome(isWin);
+        showTradeResultOverlay(isWin);
         currentTrade = null;
         signalTimers.push(setTimeout(resetAll, 4800));
     }
@@ -3726,6 +3762,8 @@ ensureDefaultModel();
         inlinePanel?.classList.remove("is-waiting", "is-blocked");
         q("noTradeChangePairBtn")?.setAttribute("hidden", "");
         q("inlineSignalReason")?.setAttribute("hidden", "");
+        q("tradeResultChartOverlay")?.setAttribute("hidden", "");
+        q("inlineTradeResult")?.setAttribute("hidden", "");
         chartOverlay?.setAttribute("hidden", "");
         chartOverlay?.classList.remove("signal-persistent");
         chartOverlay?.classList.remove("outcome-win", "outcome-loss");
