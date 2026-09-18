@@ -2358,7 +2358,7 @@ ensureDefaultModel();
         return period - (Date.now() % period);
     }
     function fmtClock(date){
-        return new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" }).format(date);
+        return new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(date);
     }
 
     // Buttons
@@ -2718,6 +2718,9 @@ ensureDefaultModel();
         const outcome = isWin ? "win" : "loss";
         learnAiFactors(trade.decisionSnapshot?.aiVotes, trade.isBuy, isWin);
         if (trade.decisionSnapshot?.patternKey) recordPatternOutcome(trade.decisionSnapshot.patternKey, isWin);
+        // Зеркальное обучение: при минусе запоминаем, что противоположная сторона
+        // в этой же ситуации выиграла бы — в следующий раз ИИ перевернётся сам
+        if (trade.decisionSnapshot?.mirrorPatternKey) recordPatternOutcome(trade.decisionSnapshot.mirrorPatternKey, !isWin);
         recordTradeOutcome({ pair: trade.pair, isBuy: trade.isBuy, isWin });
         recordSignalStats(trade, outcome, close);
         showTradeOutcome(isWin);
@@ -3028,10 +3031,13 @@ ensureDefaultModel();
         // R6: сильный жёсткий импульс — не входим в его направлении сразу,
         // после таких свечей часто идёт коррекция. Проверяем и текущую,
         // и ПРЕДЫДУЩУЮ свечу (вход идёт на открытии новой).
-        const spikeDown = impulse <= -2.0
+        // ВАЖНО: импульс должен быть «живым» — серия продолжается или жёсткая
+        // свеча прямо перед входом. Если последняя свеча уже против импульса
+        // (разворот начался) — импульс устарел, не мешаем коррекционному входу
+        const spikeDown = (dumpStreak >= 2 && impulse <= -2.0)
             || (expansion >= 1.9 && bodyStrength <= -0.5)
             || (prevExpansion >= 1.7 && prevBodyStrength <= -0.55);
-        const spikeUp = impulse >= 2.0
+        const spikeUp = (rallyStreak >= 2 && impulse >= 2.0)
             || (expansion >= 1.9 && bodyStrength >= 0.5)
             || (prevExpansion >= 1.7 && prevBodyStrength >= 0.55);
         if (!traderAction && !resolvedIsBuy && spikeDown && ruleFires("strong_impulse")) {
@@ -3086,6 +3092,8 @@ ensureDefaultModel();
                 ? (resolvedIsBuy ? "BUY • повышенная волатильность" : "SELL • повышенная волатильность")
                 : (resolvedIsBuy ? "TREND continuation вверх" : "TREND continuation вниз");
         // === Логика повторений: как отрабатывали похожие ситуации раньше ===
+        const zoneZone = atSupportZone ? (supportZoneHolds ? "sup-hold" : supportZoneBreaks ? "sup-break" : "sup")
+            : atResistanceZone ? (resistanceZoneHolds ? "res-hold" : resistanceZoneBreaks ? "res-break" : "res") : "";
         const patternKey = buildPatternKey({
             regime, dominantTrend, isBuy: finalIsBuy,
             rsiZone: quantizeRsi(rsi),
@@ -3094,8 +3102,19 @@ ensureDefaultModel();
             volumeElevated: volumeRatio >= 1.15,
             exhaustion: exhaustionUp ? "up" : exhaustionDown ? "down" : "",
             absorptionZone: bullishAbsorption ? "up" : bearishAbsorption ? "down" : "",
-            zoneZone: atSupportZone ? (supportZoneHolds ? "sup-hold" : supportZoneBreaks ? "sup-break" : "sup")
-                : atResistanceZone ? (resistanceZoneHolds ? "res-hold" : resistanceZoneBreaks ? "res-break" : "res") : ""
+            zoneZone
+        });
+        // Зеркальный отпечаток: та же ситуация, но противоположная сторона.
+        // При минусе ИИ запоминает, что противоположный вход был бы плюсом
+        const mirrorPatternKey = buildPatternKey({
+            regime, dominantTrend, isBuy: !finalIsBuy,
+            rsiZone: quantizeRsi(rsi),
+            impulseZone: quantizeImpulse(impulse),
+            levelZone: atSupportZone ? "sup" : atResistanceZone ? "res" : "",
+            volumeElevated: volumeRatio >= 1.15,
+            exhaustion: exhaustionUp ? "up" : exhaustionDown ? "down" : "",
+            absorptionZone: bullishAbsorption ? "up" : bearishAbsorption ? "down" : "",
+            zoneZone
         });
         const patternRate = getPatternWinRate(patternKey);
         let vetoedByAi = traderAction?.type === "VETO" || false;
@@ -3142,6 +3161,7 @@ ensureDefaultModel();
         return {
             ...common,
             patternKey,
+            mirrorPatternKey,
             pBuy: adjustedPBuy,
             pSell: 1 - adjustedPBuy,
             probability: Math.max(adjustedPBuy, 1 - adjustedPBuy),
