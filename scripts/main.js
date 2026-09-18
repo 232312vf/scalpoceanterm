@@ -3146,6 +3146,7 @@ ensureDefaultModel();
             zoneZone
         });
         const patternRate = getPatternWinRate(patternKey);
+        const mirrorRate = getPatternWinRate(mirrorPatternKey);
         let vetoedByAi = traderAction?.type === "VETO" || false;
         let aiNote = traderAction?.note || "";
 
@@ -3160,9 +3161,24 @@ ensureDefaultModel();
             aiNote = `похожие ситуации ранее были убыточными (${Math.round(patternRate * 100)}%)`;
         }
 
+        // === Зеркальная память: противоположная сторона здесь систематически выигрывала —
+        // ИИ сам переворачивает направление (думает как трейдер, а не по скрипту) ===
+        const aiFlip = !vetoedByAi && mirrorRate !== null && mirrorRate >= 0.65
+            && (patternRate === null || patternRate < 0.5);
+        if (aiFlip) {
+            aiNote = `противоположная сторона в таких ситуациях выигрывала (${Math.round(mirrorRate * 100)}%) — разворачиваемся`;
+        }
+
+        const finalDirectionIsBuy = aiFlip ? !finalIsBuy : finalIsBuy;
+        const directionProbability = finalDirectionIsBuy === finalIsBuy ? finalPBuy : 1 - finalPBuy;
         const adjustedPBuy = vetoedByAi
-            ? finalPBuy
-            : clampSignal(finalPBuy + (patternRate !== null ? (patternRate - 0.5) * 0.16 : 0));
+            ? directionProbability
+            : clampSignal(directionProbability
+                + (patternRate !== null ? (patternRate - 0.5) * 0.16 : 0)
+                + (mirrorRate !== null && aiFlip ? (mirrorRate - 0.5) * 0.1 : 0));
+        // Ключи для обучения: фактическое направление сделки и его зеркало
+        const tradePatternKey = aiFlip ? mirrorPatternKey : patternKey;
+        const tradeMirrorKey = aiFlip ? patternKey : mirrorPatternKey;
         // Показываем в причине, что говорят зоны (прозрачность логики)
         const zoneNote = atSupportZone
             ? `зона поддержки ${supportZoneHolds ? "держит" : supportZoneBreaks ? "пробивается" : "рядом"}`
@@ -3177,10 +3193,11 @@ ensureDefaultModel();
         // если он оказался бы прибыльным, доверие к правилу снизится (обучение на ошибках)
         if (vetoedByAi) {
             const vetoExpiry = Math.max(60, Number(state.expirySeconds) || 120);
-            rememberVeto(traderRules.length ? traderRules : ["pattern_memory"], finalIsBuy, latestClose, vetoExpiry, patternKey);
+            rememberVeto(traderRules.length ? traderRules : ["pattern_memory"], finalDirectionIsBuy, latestClose, vetoExpiry, patternKey);
             return {
                 ...common,
-                patternKey,
+                patternKey: tradePatternKey,
+                mirrorPatternKey: tradeMirrorKey,
                 status: "NO_TRADE", isBuy: null,
                 reasonCode: traderAction ? "context_veto" : "pattern_memory",
                 reason: finalReason
@@ -3189,12 +3206,13 @@ ensureDefaultModel();
 
         return {
             ...common,
-            patternKey,
-            mirrorPatternKey,
+            isBuy: finalDirectionIsBuy,
+            patternKey: tradePatternKey,
+            mirrorPatternKey: tradeMirrorKey,
             pBuy: adjustedPBuy,
             pSell: 1 - adjustedPBuy,
             probability: Math.max(adjustedPBuy, 1 - adjustedPBuy),
-            status: finalIsBuy ? "BUY" : "SELL",
+            status: finalDirectionIsBuy ? "BUY" : "SELL",
             reasonCode: rangeSetup ? "range_bias" : unsafe ? "volatile_bias" : "trend_alignment",
             reason: finalReason
         };
