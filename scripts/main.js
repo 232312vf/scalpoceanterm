@@ -2445,6 +2445,14 @@ ensureDefaultModel();
         signalTimers.push(setTimeout(() => { if (inlineStatus) inlineStatus.textContent = "СОПОСТАВЛЯЕМ ПО ПАТТЕРНАМ"; }, 2500));
         signalTimers.push(setTimeout(() => { if (inlineStatus) inlineStatus.textContent = "ПОЛУЧАЕМ АНАЛИЗ ОТ AI-АГЕНТА"; }, 5500));
         signalTimers.push(setTimeout(() => finishSignal(pair), 6500));
+        // Страховка: если сигнал завис (ошибка в расчёте или потерянный таймер) —
+        // через 75 секунд принудительный вход, чтобы интерфейс никогда не висел
+        signalTimers.push(setTimeout(() => {
+            const blockedNow = inlinePanel?.classList.contains("is-blocked");
+            if (document.body.classList.contains("signal-running") && !currentTrade && !blockedNow) {
+                finishSignal(pair, true);
+            }
+        }, 75000));
     }
 
     // Показ состояния «сейчас не лучшее время» (крестик + причина + смена пары)
@@ -3628,7 +3636,9 @@ ensureDefaultModel();
     }
 
     // Прогоняем историю графика один раз на пару/таймфрейм:
-    // симулируем сигналы и записываем их исходы в память ИИ
+    // симулируем сигналы и записываем их исходы в память ИИ.
+    // Обработка идёт МАЛЫМИ ЧАНКАМИ — иначе прогрев замораживает интерфейс
+    // и таймеры сигналов перестают срабатывать («зависло, нет сигнала»)
     function bootstrapAiMemoryFromHistory(){
         try {
             const container = document.getElementById("tv_chart_container");
@@ -3646,20 +3656,31 @@ ensureDefaultModel();
                 && Number.isFinite(Number(candle.low)) && Number.isFinite(Number(candle.close)))
                 .slice(-160);
             const horizon = Math.max(1, Math.round((Number(state.expirySeconds) || 120) / 60000));
+            let index = 40;
             let processed = 0;
-            for (let i = 40; i < candles.length - horizon; i += 1) {
-                const recent = candles.slice(i - 39, i + 1);
-                const memory = candles.slice(Math.max(0, i - 139), i + 1);
-                const context = buildHistoricalContext(recent, memory);
-                if (!context) continue;
-                const exitClose = Number(candles[i + horizon].close);
-                const won = context.isBuy ? exitClose > context.price : exitClose < context.price;
-                recordPatternOutcome(context.patternKey, won);
-                learnAiFactors(context.votes, context.isBuy, won);
-                processed += 1;
-            }
-            bootstrapped[chartKey] = processed;
-            localStorage.setItem(AI_BOOTSTRAP_KEY, JSON.stringify(bootstrapped));
+            const chunkStep = () => {
+                try {
+                    const chunkEnd = Math.min(index + 10, candles.length - horizon);
+                    for (; index < chunkEnd; index += 1) {
+                        const recent = candles.slice(index - 39, index + 1);
+                        const memory = candles.slice(Math.max(0, index - 139), index + 1);
+                        const context = buildHistoricalContext(recent, memory);
+                        if (!context) continue;
+                        const exitClose = Number(candles[index + horizon].close);
+                        const won = context.isBuy ? exitClose > context.price : exitClose < context.price;
+                        recordPatternOutcome(context.patternKey, won);
+                        learnAiFactors(context.votes, context.isBuy, won);
+                        processed += 1;
+                    }
+                    if (index < candles.length - horizon) {
+                        setTimeout(chunkStep, 0);
+                        return;
+                    }
+                    bootstrapped[chartKey] = processed;
+                    localStorage.setItem(AI_BOOTSTRAP_KEY, JSON.stringify(bootstrapped));
+                } catch (_) {}
+            };
+            chunkStep();
         } catch (_) {}
     }
 
