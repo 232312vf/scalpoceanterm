@@ -2457,11 +2457,6 @@ ensureDefaultModel();
         inlinePanel?.classList.add("is-blocked");
         q("noTradeChangePairBtn")?.removeAttribute("hidden");
         if (inlineStatus) inlineStatus.textContent = "СЕЙЧАС НЕ ЛУЧШЕЕ ВРЕМЯ ЧТОБЫ ЗАХОДИТЬ";
-        const reasonEl = q("inlineSignalReason");
-        if (reasonEl) {
-            reasonEl.textContent = decision.reason || "";
-            reasonEl.removeAttribute("hidden");
-        }
         q("sigDirection")?.replaceChildren("ПРОПУСК");
         q("sigDirection")?.classList.remove("buy", "sell");
         q("sigPair")?.replaceChildren(pair);
