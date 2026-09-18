@@ -454,6 +454,29 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
     .wait-candle,.wait-range,.signal-direction-visual.is-waiting{animation:none;opacity:1;transform:none}
 }
 
+/* Состояние «не лучшее время для входа»: крестик с прорисовкой */
+.signal-blocked-visual{display:none}
+.signal-direction-visual.is-blocked .signal-blocked-visual{display:block}
+.signal-direction-visual.is-blocked .signal-direction-svg,
+.signal-direction-visual.is-blocked .signal-wait-visual{display:none}
+.blocked-ring{
+    fill:rgba(255,113,128,.07);
+    stroke:#ff7180;stroke-width:3;
+    stroke-dasharray:280;stroke-dashoffset:280;
+    animation:blockedRingDraw .8s .1s cubic-bezier(.22,1,.36,1) forwards;
+}
+.blocked-cross{
+    stroke:#ff7180;stroke-width:6;stroke-linecap:round;
+    stroke-dasharray:70;stroke-dashoffset:70;
+    animation:blockedCrossDraw .45s .55s cubic-bezier(.22,1,.36,1) forwards;
+}
+.blocked-cross-2{animation-delay:.8s}
+@keyframes blockedRingDraw{to{stroke-dashoffset:0}}
+@keyframes blockedCrossDraw{to{stroke-dashoffset:0}}
+@media (prefers-reduced-motion:reduce){
+    .blocked-ring,.blocked-cross{animation:none;stroke-dashoffset:0}
+}
+
 /* Нет входа: анимация с крестиком — «сейчас не лучшее время чтобы заходить» */
 .signal-blocked-visual{display:none}
 .signal-direction-visual.is-blocked .signal-blocked-visual{display:block}
