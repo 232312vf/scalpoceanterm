@@ -2447,6 +2447,34 @@ ensureDefaultModel();
         signalTimers.push(setTimeout(() => finishSignal(pair), 6500));
     }
 
+    // Показ состояния «сейчас не лучшее время» (крестик + причина + смена пары)
+    function showBlockedState(decision, pair){
+        currentTrade = null;
+        directionVisual?.classList.remove("is-waiting");
+        directionVisual?.classList.add("is-blocked");
+        inlineResult?.classList.add("is-blocked");
+        inlineResult?.removeAttribute("hidden");
+        inlinePanel?.classList.add("is-blocked");
+        q("noTradeChangePairBtn")?.removeAttribute("hidden");
+        if (inlineStatus) inlineStatus.textContent = "СЕЙЧАС НЕ ЛУЧШЕЕ ВРЕМЯ ЧТОБЫ ЗАХОДИТЬ";
+        const reasonEl = q("inlineSignalReason");
+        if (reasonEl) {
+            reasonEl.textContent = decision.reason || "";
+            reasonEl.removeAttribute("hidden");
+        }
+        q("sigDirection")?.replaceChildren("ПРОПУСК");
+        q("sigDirection")?.classList.remove("buy", "sell");
+        q("sigPair")?.replaceChildren(pair);
+        q("sigRegime")?.replaceChildren(decision.regime);
+        q("sigReason")?.replaceChildren(decision.reason);
+        q("sigFeedStatus")?.replaceChildren(chartWidget?._marketStatus || "LIVE");
+        if (q("sigResult")) q("sigResult").hidden = false;
+        if (q("sigAnalysis")) q("sigAnalysis").style.display = "none";
+        if (chartProbability) chartProbability.textContent = "Вероятность —";
+        chartOverlay?.setAttribute("hidden", "");
+        chartWidget?.classList.remove("signal-active");
+    }
+
     function finishSignal(pair, atCandleOpen = false){
         // Сигнал открывается по открытию свечи:
         // если свеча открылась недавно (в пределах окна входа) — входим сразу,
@@ -2469,7 +2497,23 @@ ensureDefaultModel();
             };
 
             if (sinceOpenMs > CANDLE_ENTRY_WINDOW_MS) {
-                // Свеча открылась давно — входим только по открытию следующей
+                // Свеча открылась давно. ИИ решает сразу:
+                // очень чёткий вход — заходим немедленно, ясно что «нет» — блок сразу,
+                // иначе ждём открытие следующей свечи
+                const probe = getSignalDecision();
+                if (probe.status === "NO_TRADE" || probe.isBuy == null) {
+                    showBlockedState(probe, pair);
+                    return;
+                }
+                const candle = chartWidget?._lastCandle;
+                const candleRange = Math.max(Number(candle?.high) - Number(candle?.low), 1e-9);
+                const positionInCandle = (Number(candle?.close) - Number(candle?.low)) / candleRange;
+                const atBadExtreme = probe.isBuy ? positionInCandle >= 0.82 : positionInCandle <= 0.18;
+                if (probe.probability >= 0.62 && !atBadExtreme) {
+                    // Очень чёткий вход — не ждём следующую свечу
+                    finishSignal(pair, true);
+                    return;
+                }
                 waitForNextCandle();
                 return;
             }
@@ -2509,29 +2553,7 @@ ensureDefaultModel();
         latestLiveDecision = decision;
         renderLiveDecision(decision);
         if (decision.status === "NO_TRADE" || decision.isBuy == null) {
-            currentTrade = null;
-            directionVisual?.classList.add("is-blocked");
-            inlineResult?.classList.add("is-blocked");
-            inlineResult?.removeAttribute("hidden");
-            inlinePanel?.classList.add("is-blocked");
-            q("noTradeChangePairBtn")?.removeAttribute("hidden");
-            if (inlineStatus) inlineStatus.textContent = "СЕЙЧАС НЕ ЛУЧШЕЕ ВРЕМЯ ЧТОБЫ ЗАХОДИТЬ";
-            const reasonEl = q("inlineSignalReason");
-            if (reasonEl) {
-                reasonEl.textContent = decision.reason || "";
-                reasonEl.removeAttribute("hidden");
-            }
-            q("sigDirection")?.replaceChildren("ПРОПУСК");
-            q("sigDirection")?.classList.remove("buy", "sell");
-            q("sigPair")?.replaceChildren(pair);
-            q("sigRegime")?.replaceChildren(decision.regime);
-            q("sigReason")?.replaceChildren(decision.reason);
-            q("sigFeedStatus")?.replaceChildren(chartWidget?._marketStatus || "LIVE");
-            if (q("sigResult")) q("sigResult").hidden = false;
-            if (q("sigAnalysis")) q("sigAnalysis").style.display = "none";
-            if (chartProbability) chartProbability.textContent = "Вероятность —";
-            chartOverlay?.setAttribute("hidden", "");
-            chartWidget?.classList.remove("signal-active");
+            showBlockedState(decision, pair);
             return;
         }
         const isBuy = decision.isBuy;
@@ -2926,6 +2948,8 @@ ensureDefaultModel();
             breakout: breakoutUp ? 1 : breakoutDown ? -1 : 0,
             momentum: (rallyStreak >= 3 && dominantTrend >= 0) ? 1 : (dumpStreak >= 3 && dominantTrend <= 0) ? -1 : 0,
             absorption: bullishAbsorption ? 1 : bearishAbsorption ? -1 : 0,
+            // Тени: длинная нижняя тень = отбой лоя покупателями, верхняя = слив на хае
+            wick: lowerWick >= latestRange * 0.4 ? 1 : upperWick >= latestRange * 0.4 ? -1 : 0,
             // Голос по зонам: держащая поддержка → вверх, держащее сопротивление → вниз,
             // а зона, которую постоянно пробивают, работает наоборот
             zone: (atSupportZone && supportZoneHolds) ? 1
@@ -3006,9 +3030,11 @@ ensureDefaultModel();
         // разворотных подтверждений (отбой от зоны/границы, откуп, паттерн).
         // Такие входы на коррекции часто дают чёткий плюс
         const buyReversalEvidence = rejectedSupport || bullishAbsorption || bullishPattern
-            || (atSupportZone && supportZoneHolds) || insideSupportZone;
+            || (atSupportZone && supportZoneHolds) || insideSupportZone
+            || (atSupportZone && lowerWick >= latestRange * 0.35);
         const sellReversalEvidence = rejectedResistance || bearishAbsorption || bearishPattern
-            || (atResistanceZone && resistanceZoneHolds) || insideResistanceZone;
+            || (atResistanceZone && resistanceZoneHolds) || insideResistanceZone
+            || (atResistanceZone && upperWick >= latestRange * 0.35);
         if (!traderAction && resolvedIsBuy && dominantTrend < 0 && !atSupportZone && !nearSupport
             && !buyReversalEvidence && ruleFires("counter_trend")) {
             traderRules.push("counter_trend");
