@@ -3162,19 +3162,19 @@ ensureDefaultModel();
         let aiNote = traderAction?.note || "";
 
         // Исторически прибыльная ситуация — вето ИИ отступает, не блокируем чёткий вход
-        if (vetoedByAi && patternRate !== null && patternRate >= 0.65) {
+        if (vetoedByAi && patternRate !== null && patternRate >= 0.6) {
             vetoedByAi = false;
             aiNote = `похожие ситуации ранее давали плюс (${Math.round(patternRate * 100)}%)`;
         }
         // Исторически убыточная ситуация — пропускаем, даже если индикаторы «за»
-        if (!vetoedByAi && patternRate !== null && patternRate <= 0.35) {
+        if (!vetoedByAi && patternRate !== null && patternRate <= 0.32) {
             vetoedByAi = true;
             aiNote = `похожие ситуации ранее были убыточными (${Math.round(patternRate * 100)}%)`;
         }
 
         // === Зеркальная память: противоположная сторона здесь систематически выигрывала —
         // ИИ сам переворачивает направление (думает как трейдер, а не по скрипту) ===
-        const aiFlip = !vetoedByAi && mirrorRate !== null && mirrorRate >= 0.65
+        const aiFlip = !vetoedByAi && mirrorRate !== null && mirrorRate >= 0.6
             && (patternRate === null || patternRate < 0.5);
         if (aiFlip) {
             aiNote = `противоположная сторона в таких ситуациях выигрывала (${Math.round(mirrorRate * 100)}%) — разворачиваемся`;
