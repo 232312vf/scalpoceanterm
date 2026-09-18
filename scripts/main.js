@@ -2100,6 +2100,7 @@ ensureDefaultModel();
                 saveState();
                 close();
                 updateChart(state.pair || item.name, state.time || "M1");
+                window.dispatchEvent(new CustomEvent("signal:pair-changed"));
             });
         });
     }
@@ -2356,10 +2357,16 @@ ensureDefaultModel();
     q("getSignalBtn")?.addEventListener("click", start);
     q("sigRepeat")?.addEventListener("click", start);
     q("sigReset")?.addEventListener("click", resetAll);
-    // «Сменить пару» — показывается, когда ИИ рекомендует пропустить вход
+    // «Сменить пару» — показывается, когда ИИ рекомендует пропустить вход.
+    // Сначала выходим из режима сигнала, чтобы вернуть поля и кнопку «Получить сигнал»
     q("noTradeChangePairBtn")?.addEventListener("click", () => {
         q("noTradeChangePairBtn")?.setAttribute("hidden", "");
+        resetAll();
         selectField("pair");
+    });
+    // Если пару меняют из попапа, пока панель заблокирована — тоже выходим из режима
+    window.addEventListener("signal:pair-changed", () => {
+        if (inlinePanel?.classList.contains("is-blocked")) resetAll();
     });
     window.addEventListener("market:update", () => {
         bootstrapAiMemoryFromHistory();
