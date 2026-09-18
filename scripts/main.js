@@ -2928,7 +2928,10 @@ ensureDefaultModel();
             zone: (atSupportZone && supportZoneHolds) ? 1
                 : (atResistanceZone && resistanceZoneHolds) ? -1
                     : (atResistanceZone && resistanceZoneBreaks) ? 1
-                        : (atSupportZone && supportZoneBreaks) ? -1 : 0
+                        : (atSupportZone && supportZoneBreaks) ? -1 : 0,
+            // Цена ВНУТРИ держащей зоны — самая сильная точка реакции
+            zoneInside: (insideSupportZone && supportZoneHolds) ? 1
+                : (insideResistanceZone && resistanceZoneHolds) ? -1 : 0
         };
         const aiAdjust = getAiScoreAdjustment(aiVotes);
         const score = (rangeMarket && !breakoutUp && !breakoutDown ? rangeScore : trendScore) + aiAdjust.score
@@ -2996,14 +2999,22 @@ ensureDefaultModel();
             traderRules.push("stale_breakout");
             traderAction = { type: "VETO", note: "пробой заезженного уровня без подтверждения объёмом" };
         }
-        // R4: вход против доминирующего тренда без подтверждения уровнем
-        if (!traderAction && resolvedIsBuy && dominantTrend < 0 && !atSupportZone && ruleFires("counter_trend")) {
+        // R4: вход против доминирующего тренда — пропускаем ТОЛЬКО если нет
+        // разворотных подтверждений (отбой от зоны/границы, откуп, паттерн).
+        // Такие входы на коррекции часто дают чёткий плюс
+        const buyReversalEvidence = rejectedSupport || bullishAbsorption || bullishPattern
+            || (atSupportZone && supportZoneHolds) || insideSupportZone;
+        const sellReversalEvidence = rejectedResistance || bearishAbsorption || bearishPattern
+            || (atResistanceZone && resistanceZoneHolds) || insideResistanceZone;
+        if (!traderAction && resolvedIsBuy && dominantTrend < 0 && !atSupportZone && !nearSupport
+            && !buyReversalEvidence && ruleFires("counter_trend")) {
             traderRules.push("counter_trend");
-            traderAction = { type: "VETO", note: "покупка против доминирующего тренда" };
+            traderAction = { type: "VETO", note: "покупка против доминирующего тренда без разворотных подтверждений" };
         }
-        if (!traderAction && !resolvedIsBuy && dominantTrend > 0 && !atResistanceZone && ruleFires("counter_trend")) {
+        if (!traderAction && !resolvedIsBuy && dominantTrend > 0 && !atResistanceZone && !nearResistance
+            && !sellReversalEvidence && ruleFires("counter_trend")) {
             traderRules.push("counter_trend");
-            traderAction = { type: "VETO", note: "продажа против доминирующего тренда" };
+            traderAction = { type: "VETO", note: "продажа против доминирующего тренда без разворотных подтверждений" };
         }
         // R5: продажа на дне / покупка на хае при истощении движения
         if (!traderAction && !resolvedIsBuy && exhaustionDown && rsi <= 30 && ruleFires("exhaustion")) {
@@ -3049,7 +3060,11 @@ ensureDefaultModel();
             features: { rsi, impulse, volumeRatio, expansion, nearSupport, nearResistance,
                 rejectedSupport, rejectedResistance, breakoutUp, breakoutDown,
                 rallyStreak, dumpStreak, dominantTrend, atSupportZone, atResistanceZone,
-                supportTested, resistanceTested },
+                supportTested, resistanceTested,
+                supportZoneHolds, resistanceZoneHolds, supportZoneBreaks, resistanceZoneBreaks,
+                insideSupportZone, insideResistanceZone,
+                supportHoldRate: zoneContext.supportZone?.holdRate ?? null,
+                resistanceHoldRate: zoneContext.resistanceZone?.holdRate ?? null },
             dataFreshnessMs: container?._lastMarketMessageAt
                 ? Date.now() - container._lastMarketMessageAt : null
         };
@@ -3094,7 +3109,15 @@ ensureDefaultModel();
         const adjustedPBuy = vetoedByAi
             ? finalPBuy
             : clampSignal(finalPBuy + (patternRate !== null ? (patternRate - 0.5) * 0.16 : 0));
-        const finalReason = aiNote ? `${reason} • ИИ: ${aiNote}` : reason;
+        // Показываем в причине, что говорят зоны (прозрачность логики)
+        const zoneNote = atSupportZone
+            ? `зона поддержки ${supportZoneHolds ? "держит" : supportZoneBreaks ? "пробивается" : "рядом"}`
+            : atResistanceZone
+                ? `зона сопротивления ${resistanceZoneHolds ? "держит" : resistanceZoneBreaks ? "пробивается" : "рядом"}`
+                : "";
+        const finalReason = aiNote
+            ? `${reason} • ИИ: ${aiNote}${zoneNote ? ` • ${zoneNote}` : ""}`
+            : zoneNote ? `${reason} • ${zoneNote}` : reason;
 
         // Вето ИИ: вход отменён, но запоминаем «как бы» вход —
         // если он оказался бы прибыльным, доверие к правилу снизится (обучение на ошибках)
@@ -3356,16 +3379,19 @@ ensureDefaultModel();
             if (latestClose > zone.high) return latestClose - zone.high;
             return 0;
         };
+        const insideBand = (zone) => latestClose >= zone.low && latestClose <= zone.high;
         const supportZone = zones
-            .filter((zone) => zone.role === "support" && zone.high <= latestClose + zoneTolerance * 0.5)
+            .filter((zone) => (zone.role === "support" || insideBand(zone))
+                && zone.low <= latestClose + zoneTolerance * 0.5)
             .map((zone) => ({ ...zone, distance: distanceTo(zone) }))
             .sort((a, b) => a.distance - b.distance)[0] || null;
         const resistanceZone = zones
-            .filter((zone) => zone.role === "resistance" && zone.low >= latestClose - zoneTolerance * 0.5)
+            .filter((zone) => (zone.role === "resistance" || insideBand(zone))
+                && zone.high >= latestClose - zoneTolerance * 0.5)
             .map((zone) => ({ ...zone, distance: distanceTo(zone) }))
             .sort((a, b) => a.distance - b.distance)[0] || null;
 
-        const zoneRange = averageRange * 0.7;
+        const zoneRange = averageRange * 0.9;
         return {
             supportZone, resistanceZone,
             atSupportZone: !!supportZone && supportZone.distance <= zoneRange,
