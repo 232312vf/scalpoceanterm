@@ -1,3 +1,16 @@
+// Чёрный ящик: любая ошибка JS видна пользователю тостом — сбои не «молчат»
+window.addEventListener("error", (event) => {
+    try {
+        console.error("[ScalpTerminal]", event.error || event.message);
+        const toast = document.getElementById("uiToast");
+        if (toast) {
+            toast.textContent = `Сбой: ${event.message}`;
+            toast.classList.add("is-visible");
+            setTimeout(() => toast.classList.remove("is-visible"), 6000);
+        }
+    } catch (_) {}
+});
+
 // =============================
 // Mobile viewport + iOS keyboard controller
 // =============================
@@ -2381,9 +2394,13 @@ ensureDefaultModel();
         if (liveDecisionFrame != null) return;
         liveDecisionFrame = requestAnimationFrame(() => {
             liveDecisionFrame = null;
-            latestLiveDecision = getSignalDecision();
-            renderLiveDecision(latestLiveDecision);
-            if (currentTrade) updateOpenTradeMark(currentTrade);
+            try {
+                latestLiveDecision = getSignalDecision();
+                renderLiveDecision(latestLiveDecision);
+                if (currentTrade) updateOpenTradeMark(currentTrade);
+            } catch (error) {
+                console.error("[ScalpTerminal] live decision:", error);
+            }
         });
     });
 
@@ -2444,13 +2461,24 @@ ensureDefaultModel();
         if (inlineStatus) inlineStatus.textContent = "ИЩЕМ ПОЗИЦИЮ";
         signalTimers.push(setTimeout(() => { if (inlineStatus) inlineStatus.textContent = "СОПОСТАВЛЯЕМ ПО ПАТТЕРНАМ"; }, 2500));
         signalTimers.push(setTimeout(() => { if (inlineStatus) inlineStatus.textContent = "ПОЛУЧАЕМ АНАЛИЗ ОТ AI-АГЕНТА"; }, 5500));
-        signalTimers.push(setTimeout(() => finishSignal(pair), 6500));
+        signalTimers.push(setTimeout(() => {
+            try { finishSignal(pair); }
+            catch (error) {
+                // Ошибка не должна убивать сигнал — повторяем немедленно
+                console.error("[ScalpTerminal] finishSignal:", error);
+                try { finishSignal(pair, true); } catch (_) {}
+            }
+        }, 6500));
         // Страховка: если сигнал завис (ошибка в расчёте или потерянный таймер) —
         // через 75 секунд принудительный вход, чтобы интерфейс никогда не висел
         signalTimers.push(setTimeout(() => {
-            const blockedNow = inlinePanel?.classList.contains("is-blocked");
-            if (document.body.classList.contains("signal-running") && !currentTrade && !blockedNow) {
-                finishSignal(pair, true);
+            try {
+                const blockedNow = inlinePanel?.classList.contains("is-blocked");
+                if (document.body.classList.contains("signal-running") && !currentTrade && !blockedNow) {
+                    finishSignal(pair, true);
+                }
+            } catch (_) {
+                try { finishSignal(pair, true); } catch (_) {}
             }
         }, 75000));
     }
