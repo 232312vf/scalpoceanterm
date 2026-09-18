@@ -2362,6 +2362,7 @@ ensureDefaultModel();
         selectField("pair");
     });
     window.addEventListener("market:update", () => {
+        bootstrapAiMemoryFromHistory();
         if (liveDecisionFrame != null) return;
         liveDecisionFrame = requestAnimationFrame(() => {
             liveDecisionFrame = null;
@@ -3237,6 +3238,144 @@ ensureDefaultModel();
             parts.volumeElevated ? "vol" : "",
             parts.exhaustion ? `exh:${parts.exhaustion}` : ""
         ].filter(Boolean).join("|");
+    }
+
+    // === Прогрев памяти: прогон прошлого графика через логику ИИ ===
+    const AI_BOOTSTRAP_KEY = "ps_ai_bootstrap_v1";
+    let aiBootstrappedKey = null;
+
+    function buildHistoricalContext(recent, memory){
+        if (!Array.isArray(recent) || recent.length < 20) return null;
+        const closes = recent.map((candle) => Number(candle.close));
+        const ema = (period) => {
+            const smoothing = 2 / (period + 1);
+            return closes.reduce((value, close, index) => index === 0
+                ? close : close * smoothing + value * (1 - smoothing), closes[0]);
+        };
+        const fastEma = ema(5);
+        const slowEma = ema(13);
+        const latest = recent.at(-1);
+        const previous = recent.at(-2);
+        const latestClose = Number(latest.close);
+        const latestOpen = Number(latest.open);
+        const latestHigh = Number(latest.high);
+        const latestLow = Number(latest.low);
+        const latestRange = Math.max(latestHigh - latestLow, 1e-9);
+        const latestBody = latestClose - latestOpen;
+        const averageRange = recent.slice(-14).reduce((sum, candle) =>
+            sum + Math.max(Number(candle.high) - Number(candle.low), 0), 0) / 14;
+        const averageVolume = recent.slice(-14).reduce((sum, candle) =>
+            sum + (Number(candle.volume) || 0), 0) / 14;
+        const recentVolume = recent.slice(-3).reduce((sum, candle) =>
+            sum + (Number(candle.volume) || 0), 0) / 3;
+        const volumeRatio = averageVolume > 0 ? recentVolume / averageVolume : 1;
+        const returns = closes.slice(1).map((close, index) =>
+            (close - closes[index]) / Math.max(Math.abs(closes[index]), 1e-9));
+        const gains = returns.slice(-14).filter((value) => value > 0);
+        const losses = returns.slice(-14).filter((value) => value < 0).map(Math.abs);
+        const avgGain = gains.reduce((sum, value) => sum + value, 0) / 14;
+        const avgLoss = losses.reduce((sum, value) => sum + value, 0) / 14;
+        const relativeStrength = avgLoss ? avgGain / avgLoss : avgGain ? 2 : 1;
+        const rsi = 100 - (100 / (1 + relativeStrength));
+        const impulse = (latestClose - closes.at(-5)) / Math.max(averageRange, latestClose * 1e-6);
+        const upperWick = latestHigh - Math.max(latestOpen, latestClose);
+        const lowerWick = Math.min(latestOpen, latestClose) - latestLow;
+        const bullishPattern = (lowerWick >= Math.max(Math.abs(latestBody) * 1.6, latestRange * 0.35)
+                && latestClose >= latestLow + latestRange * 0.58)
+            || (latestClose > latestOpen && latestOpen <= Number(previous.close) && latestClose >= Number(previous.open));
+        const bearishPattern = (upperWick >= Math.max(Math.abs(latestBody) * 1.6, latestRange * 0.35)
+                && latestClose <= latestHigh - latestRange * 0.58)
+            || (latestClose < latestOpen && latestOpen >= Number(previous.close) && latestClose <= Number(previous.open));
+        const expansion = latestRange / Math.max(averageRange, 1e-9);
+        // buildHistoricalContext: индикаторы посчитаны, формируем контекст ситуации
+        const pivotTolerance = Math.max(averageRange * 0.18, latestClose * 0.00012);
+        const pivots = [];
+        for (let i = 2; i < memory.length - 2; i += 1) {
+            const high = Number(memory[i].high);
+            const low = Number(memory[i].low);
+            const isSwingHigh = [1, 2, -1, -2].every((offset) => high >= Number(memory[i + offset].high) - pivotTolerance * 0.25);
+            const isSwingLow = [1, 2, -1, -2].every((offset) => low <= Number(memory[i + offset].low) + pivotTolerance * 0.25);
+            if (isSwingHigh) pivots.push({ price: high, kind: 1 });
+            if (isSwingLow) pivots.push({ price: low, kind: -1 });
+        }
+        const nearLevel = pivots
+            .map((pivot) => ({ ...pivot, distAtr: (pivot.price - latestClose) / Math.max(averageRange, 1e-9) }))
+            .filter((pivot) => Math.abs(pivot.distAtr) <= 0.75)
+            .sort((a, b) => Math.abs(a.distAtr) - Math.abs(b.distAtr))[0] || null;
+        const atSupportZone = !!nearLevel && nearLevel.kind === -1;
+        const atResistanceZone = !!nearLevel && nearLevel.kind === 1;
+
+        let rallyStreak = 0;
+        let dumpStreak = 0;
+        for (let i = recent.length - 1; i >= 0; i -= 1) {
+            const bullish = Number(recent[i].close) >= Number(recent[i].open);
+            if (bullish) { if (dumpStreak) break; rallyStreak += 1; }
+            else { if (rallyStreak) break; dumpStreak += 1; }
+        }
+        const trendLookback = Math.min(recent.length - 1, 26);
+        const dominantShift = (latestClose - Number(recent[recent.length - 1 - trendLookback].close)) / Math.max(averageRange, 1e-9);
+        const dominantTrend = dominantShift > 1.6 ? 1 : dominantShift < -1.6 ? -1 : 0;
+
+        const votes = {
+            trend: Math.sign(fastEma - slowEma),
+            impulse: Math.sign(impulse),
+            rsi: rsi <= 35 ? 1 : rsi >= 65 ? -1 : 0,
+            pattern: bullishPattern ? 1 : bearishPattern ? -1 : 0,
+            volume: volumeRatio >= 1.15 ? Math.sign(latestBody) : 0,
+            level: atSupportZone ? 1 : atResistanceZone ? -1 : 0,
+            breakout: 0,
+            momentum: (rallyStreak >= 3 && dominantTrend >= 0) ? 1 : (dumpStreak >= 3 && dominantTrend <= 0) ? -1 : 0
+        };
+        const score = votes.trend * 1.8 + votes.impulse * 1.6 + votes.rsi * 1.5 + votes.pattern * 1.4
+            + votes.level * 2.0 + votes.momentum * 1.4;
+        if (!score) return null;
+        const isBuy = score > 0;
+        const patternKey = buildPatternKey({
+            regime: Math.abs(fastEma - slowEma) <= averageRange * 1.25 ? "RANGE" : "TREND",
+            dominantTrend, isBuy,
+            rsiZone: quantizeRsi(rsi),
+            impulseZone: quantizeImpulse(impulse),
+            levelZone: atSupportZone ? "sup" : atResistanceZone ? "res" : "",
+            volumeElevated: volumeRatio >= 1.15,
+            exhaustion: (rallyStreak >= 4 || impulse > 2.3) ? "up" : (dumpStreak >= 4 || impulse < -2.3) ? "down" : ""
+        });
+        return { isBuy, price: latestClose, votes, patternKey };
+    }
+
+    // Прогоняем историю графика один раз на пару/таймфрейм:
+    // симулируем сигналы и записываем их исходы в память ИИ
+    function bootstrapAiMemoryFromHistory(){
+        try {
+            const container = document.getElementById("tv_chart_container");
+            const data = container?._candleData || [];
+            const chartKey = String(container?._chartKey || "");
+            if (!chartKey || data.length < 60) return;
+            if (aiBootstrappedKey === chartKey) return;
+            let bootstrapped = {};
+            try { bootstrapped = JSON.parse(localStorage.getItem(AI_BOOTSTRAP_KEY) || "{}") || {}; } catch (_) {}
+            if (bootstrapped[chartKey]) { aiBootstrappedKey = chartKey; return; }
+            aiBootstrappedKey = chartKey;
+
+            const candles = data.filter((candle) =>
+                Number.isFinite(Number(candle.open)) && Number.isFinite(Number(candle.high))
+                && Number.isFinite(Number(candle.low)) && Number.isFinite(Number(candle.close)))
+                .slice(-160);
+            const horizon = Math.max(1, Math.round((Number(state.expirySeconds) || 120) / 60000));
+            let processed = 0;
+            for (let i = 40; i < candles.length - horizon; i += 1) {
+                const recent = candles.slice(i - 39, i + 1);
+                const memory = candles.slice(Math.max(0, i - 139), i + 1);
+                const context = buildHistoricalContext(recent, memory);
+                if (!context) continue;
+                const exitClose = Number(candles[i + horizon].close);
+                const won = context.isBuy ? exitClose > context.price : exitClose < context.price;
+                recordPatternOutcome(context.patternKey, won);
+                learnAiFactors(context.votes, context.isBuy, won);
+                processed += 1;
+            }
+            bootstrapped[chartKey] = processed;
+            localStorage.setItem(AI_BOOTSTRAP_KEY, JSON.stringify(bootstrapped));
+        } catch (_) {}
     }
 
     function localSignalReasoner(features){
