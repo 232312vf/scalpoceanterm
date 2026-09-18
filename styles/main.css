@@ -506,6 +506,25 @@ body.analysis-open .wave-loader{opacity:0;transform:scale(.96)}
 @media (prefers-reduced-motion:reduce){
     .blocked-ring,.blocked-cross{animation:none;stroke-dashoffset:0}
 }
+
+/* Кнопка «Сменить пару» — показывается при пропуске входа */
+.no-trade-change-pair{
+    margin:14px auto 4px;
+    padding:10px 22px;
+    border:1px solid rgba(255,113,128,.45);
+    border-radius:999px;
+    background:rgba(255,113,128,.1);
+    color:#ff9aa5;
+    font-family:inherit;
+    font-size:13px;
+    font-weight:800;
+    letter-spacing:.02em;
+    cursor:pointer;
+    touch-action:manipulation;
+    transition:background .2s ease,border-color .2s ease;
+}
+.no-trade-change-pair:hover{background:rgba(255,113,128,.18);border-color:rgba(255,113,128,.7)}
+@media (prefers-reduced-motion:reduce){.no-trade-change-pair{transition:none}}
 @keyframes signalDirectionIn{to{opacity:1;transform:scale(1) translateY(0)}}
 @keyframes signalTextIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes signalEntryIn{from{opacity:0;transform:scaleX(.3)}to{opacity:1;transform:scaleX(1)}}

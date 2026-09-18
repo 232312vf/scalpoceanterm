@@ -2356,6 +2356,11 @@ ensureDefaultModel();
     q("getSignalBtn")?.addEventListener("click", start);
     q("sigRepeat")?.addEventListener("click", start);
     q("sigReset")?.addEventListener("click", resetAll);
+    // «Сменить пару» — показывается, когда ИИ рекомендует пропустить вход
+    q("noTradeChangePairBtn")?.addEventListener("click", () => {
+        q("noTradeChangePairBtn")?.setAttribute("hidden", "");
+        selectField("pair");
+    });
     window.addEventListener("market:update", () => {
         if (liveDecisionFrame != null) return;
         liveDecisionFrame = requestAnimationFrame(() => {
@@ -2456,6 +2461,7 @@ ensureDefaultModel();
         directionVisual?.classList.remove("is-waiting", "is-blocked");
         inlineResult?.classList.remove("is-waiting", "is-blocked");
         inlinePanel?.classList.remove("is-waiting", "is-blocked");
+        q("noTradeChangePairBtn")?.setAttribute("hidden", "");
         const decision = getSignalDecision();
         latestLiveDecision = decision;
         renderLiveDecision(decision);
@@ -2465,6 +2471,7 @@ ensureDefaultModel();
             inlineResult?.classList.add("is-blocked");
             inlineResult?.removeAttribute("hidden");
             inlinePanel?.classList.add("is-blocked");
+            q("noTradeChangePairBtn")?.removeAttribute("hidden");
             if (inlineStatus) inlineStatus.textContent = "СЕЙЧАС НЕ ЛУЧШЕЕ ВРЕМЯ ЧТОБЫ ЗАХОДИТЬ";
             q("sigDirection")?.replaceChildren("ПРОПУСК");
             q("sigDirection")?.classList.remove("buy", "sell");
@@ -2662,6 +2669,7 @@ ensureDefaultModel();
         const isWin = trade.isBuy ? close >= entry : close <= entry;
         const outcome = isWin ? "win" : "loss";
         learnAiFactors(trade.decisionSnapshot?.aiVotes, trade.isBuy, isWin);
+        if (trade.decisionSnapshot?.patternKey) recordPatternOutcome(trade.decisionSnapshot.patternKey, isWin);
         recordTradeOutcome({ pair: trade.pair, isBuy: trade.isBuy, isWin });
         recordSignalStats(trade, outcome, close);
         showTradeOutcome(isWin);
@@ -2870,7 +2878,8 @@ ensureDefaultModel();
             pattern: bullishPattern ? 1 : bearishPattern ? -1 : 0,
             volume: volumeRatio >= 1.15 ? Math.sign(latestBody) : 0,
             level: atSupportZone ? 1 : atResistanceZone ? -1 : 0,
-            breakout: breakoutUp ? 1 : breakoutDown ? -1 : 0
+            breakout: breakoutUp ? 1 : breakoutDown ? -1 : 0,
+            momentum: (rallyStreak >= 3 && dominantTrend >= 0) ? 1 : (dumpStreak >= 3 && dominantTrend <= 0) ? -1 : 0
         };
         const aiAdjust = getAiScoreAdjustment(aiVotes);
         const score = (rangeMarket && !breakoutUp && !breakoutDown ? rangeScore : trendScore) + aiAdjust.score;
@@ -2973,22 +2982,55 @@ ensureDefaultModel();
             : unsafe
                 ? (resolvedIsBuy ? "BUY • повышенная волатильность" : "SELL • повышенная волатильность")
                 : (resolvedIsBuy ? "TREND continuation вверх" : "TREND continuation вниз");
-        const finalReason = traderAction?.note ? `${reason} • ИИ: ${traderAction.note}` : reason;
+        // === Логика повторений: как отрабатывали похожие ситуации раньше ===
+        const patternKey = buildPatternKey({
+            regime, dominantTrend, isBuy: finalIsBuy,
+            rsiZone: quantizeRsi(rsi),
+            impulseZone: quantizeImpulse(impulse),
+            levelZone: atSupportZone ? "sup" : atResistanceZone ? "res" : "",
+            volumeElevated: volumeRatio >= 1.15,
+            exhaustion: exhaustionUp ? "up" : exhaustionDown ? "down" : ""
+        });
+        const patternRate = getPatternWinRate(patternKey);
+        let vetoedByAi = traderAction?.type === "VETO" || false;
+        let aiNote = traderAction?.note || "";
 
-        // Вето ИИ: сделка отменена, но запоминаем «как бы» вход —
+        // Исторически прибыльная ситуация — вето ИИ отступает, не блокируем чёткий вход
+        if (vetoedByAi && patternRate !== null && patternRate >= 0.65) {
+            vetoedByAi = false;
+            aiNote = `похожие ситуации ранее давали плюс (${Math.round(patternRate * 100)}%)`;
+        }
+        // Исторически убыточная ситуация — пропускаем, даже если индикаторы «за»
+        if (!vetoedByAi && patternRate !== null && patternRate <= 0.35) {
+            vetoedByAi = true;
+            aiNote = `похожие ситуации ранее были убыточными (${Math.round(patternRate * 100)}%)`;
+        }
+
+        const adjustedPBuy = vetoedByAi
+            ? finalPBuy
+            : clampSignal(finalPBuy + (patternRate !== null ? (patternRate - 0.5) * 0.16 : 0));
+        const finalReason = aiNote ? `${reason} • ИИ: ${aiNote}` : reason;
+
+        // Вето ИИ: вход отменён, но запоминаем «как бы» вход —
         // если он оказался бы прибыльным, доверие к правилу снизится (обучение на ошибках)
-        if (traderAction?.type === "VETO") {
+        if (vetoedByAi) {
             const vetoExpiry = Math.max(60, Number(state.expirySeconds) || 120);
-            traderRules.forEach((ruleKey) => rememberVeto(ruleKey, finalIsBuy, latestClose, vetoExpiry));
+            rememberVeto(traderRules.length ? traderRules : ["pattern_memory"], finalIsBuy, latestClose, vetoExpiry, patternKey);
             return {
                 ...common,
+                patternKey,
                 status: "NO_TRADE", isBuy: null,
-                reasonCode: "context_veto", reason: finalReason
+                reasonCode: traderAction ? "context_veto" : "pattern_memory",
+                reason: finalReason
             };
         }
 
         return {
             ...common,
+            patternKey,
+            pBuy: adjustedPBuy,
+            pSell: 1 - adjustedPBuy,
+            probability: Math.max(adjustedPBuy, 1 - adjustedPBuy),
             status: finalIsBuy ? "BUY" : "SELL",
             reasonCode: rangeSetup ? "range_bias" : unsafe ? "volatile_bias" : "trend_alignment",
             reason: finalReason
@@ -3058,10 +3100,14 @@ ensureDefaultModel();
     }
 
     // Запоминаем отменённые ИИ входы, чтобы позже проверить, было ли вето верным
-    function rememberVeto(ruleKey, isBuy, entryPrice, expirySeconds){
+    function rememberVeto(ruleKeys, isBuy, entryPrice, expirySeconds, patternKey){
         try {
             const log = loadVetoLog();
-            log.push({ key: ruleKey, isBuy, entryPrice, matureAt: Date.now() + expirySeconds * 1000 });
+            log.push({
+                rules: Array.isArray(ruleKeys) ? ruleKeys : [ruleKeys].filter(Boolean),
+                isBuy, entryPrice, patternKey,
+                matureAt: Date.now() + expirySeconds * 1000
+            });
             localStorage.setItem(AI_VETO_KEY, JSON.stringify(log.slice(-40)));
         } catch (_) {}
     }
@@ -3103,10 +3149,60 @@ ensureDefaultModel();
                 if (now < item.matureAt) { pending.push(item); return; }
                 changed = true;
                 const wouldHaveWon = item.isBuy ? currentClose > item.entryPrice : currentClose < item.entryPrice;
-                saveRuleOutcome(item.key, !wouldHaveWon);
+                (item.rules || []).forEach((ruleKey) => saveRuleOutcome(ruleKey, !wouldHaveWon));
+                if (item.patternKey) recordPatternOutcome(item.patternKey, wouldHaveWon);
             });
             if (changed) localStorage.setItem(AI_VETO_KEY, JSON.stringify(pending.slice(-40)));
         } catch (_) {}
+    }
+
+    // === Логика повторений: память исходов похожих ситуаций ===
+    const AI_PATTERNS_KEY = "ps_ai_patterns_v1";
+    function loadAiPatterns(){
+        try {
+            const stored = JSON.parse(localStorage.getItem(AI_PATTERNS_KEY) || "{}");
+            return stored && typeof stored === "object" ? stored : {};
+        } catch (_) { return {}; }
+    }
+    function recordPatternOutcome(key, isWin){
+        try {
+            if (!key) return;
+            const all = loadAiPatterns();
+            const stats = all[key] && Number.isFinite(all[key].wins) ? all[key] : { wins: 0, losses: 0 };
+            if (isWin) stats.wins += 1; else stats.losses += 1;
+            all[key] = stats;
+            const keys = Object.keys(all);
+            if (keys.length > 80) delete all[keys[0]];
+            localStorage.setItem(AI_PATTERNS_KEY, JSON.stringify(all));
+        } catch (_) {}
+    }
+    // Возвращает winRate похожих ситуаций или null, если их пока мало
+    function getPatternWinRate(key){
+        const stats = loadAiPatterns()[key];
+        if (!stats) return null;
+        const total = (stats.wins || 0) + (stats.losses || 0);
+        return total >= 3 ? (stats.wins || 0) / total : null;
+    }
+    function quantizeRsi(rsi){ return rsi <= 35 ? "oversold" : rsi >= 65 ? "overbought" : "mid"; }
+    function quantizeImpulse(value){
+        const impulse = Number(value) || 0;
+        if (impulse > 2.3) return "strong_up";
+        if (impulse > 1) return "up";
+        if (impulse < -2.3) return "strong_down";
+        if (impulse < -1) return "down";
+        return "flat";
+    }
+    function buildPatternKey(parts){
+        return [
+            parts.regime,
+            `trend${parts.dominantTrend >= 0 ? "+" : ""}${parts.dominantTrend}`,
+            parts.isBuy ? "BUY" : "SELL",
+            `rsi:${parts.rsiZone}`,
+            `imp:${parts.impulseZone}`,
+            parts.levelZone ? `level:${parts.levelZone}` : "",
+            parts.volumeElevated ? "vol" : "",
+            parts.exhaustion ? `exh:${parts.exhaustion}` : ""
+        ].filter(Boolean).join("|");
     }
 
     function localSignalReasoner(features){
@@ -3206,6 +3302,7 @@ ensureDefaultModel();
         directionVisual?.classList.remove("is-waiting", "is-blocked");
         inlineResult?.classList.remove("is-waiting", "is-blocked");
         inlinePanel?.classList.remove("is-waiting", "is-blocked");
+        q("noTradeChangePairBtn")?.setAttribute("hidden", "");
         chartOverlay?.setAttribute("hidden", "");
         chartOverlay?.classList.remove("signal-persistent");
         chartOverlay?.classList.remove("outcome-win", "outcome-loss");
