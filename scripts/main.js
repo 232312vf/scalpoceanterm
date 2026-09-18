@@ -2760,6 +2760,12 @@ ensureDefaultModel();
         const rsi = 100 - (100 / (1 + relativeStrength));
         const impulse = (latestClose - closes.at(-5)) / Math.max(averageRange, latestClose * 1e-6);
         const bodyStrength = latestBody / latestRange;
+        // Метрики предыдущей свечи: вход происходит на открытии НОВОЙ свечи,
+        // поэтому жёсткий импульс обычно только что закрылся именно в предыдущей
+        const prevRange = Math.max(Number(previous.high) - Number(previous.low), 1e-9);
+        const prevBody = Number(previous.close) - Number(previous.open);
+        const prevBodyStrength = prevBody / prevRange;
+        const prevExpansion = prevRange / Math.max(averageRange, 1e-9);
         const candleBias = recent.slice(-8).reduce((score, candle) => {
             const body = Number(candle.close) - Number(candle.open);
             const range = Math.max(Number(candle.high) - Number(candle.low), 1e-9);
@@ -2961,14 +2967,25 @@ ensureDefaultModel();
             traderAction = { type: "VETO", note: "рынок перекуплен — не покупаем на хае" };
         }
         // R6: сильный жёсткий импульс — не входим в его направлении сразу,
-        // после таких свечей часто идёт коррекция (продаём на дне / покупаем на хае)
-        if (!traderAction && !resolvedIsBuy && (impulse <= -2.0 || (expansion >= 1.9 && bodyStrength <= -0.5)) && ruleFires("strong_impulse")) {
+        // после таких свечей часто идёт коррекция. Проверяем и текущую,
+        // и ПРЕДЫДУЩУЮ свечу (вход идёт на открытии новой).
+        const spikeDown = impulse <= -2.0
+            || (expansion >= 1.9 && bodyStrength <= -0.5)
+            || (prevExpansion >= 1.7 && prevBodyStrength <= -0.55);
+        const spikeUp = impulse >= 2.0
+            || (expansion >= 1.9 && bodyStrength >= 0.5)
+            || (prevExpansion >= 1.7 && prevBodyStrength >= 0.55);
+        if (!traderAction && !resolvedIsBuy && spikeDown && ruleFires("strong_impulse")) {
             traderRules.push("strong_impulse");
-            traderAction = { type: "VETO", note: "сильный импульс вниз — не продаём на дне, ждём коррекцию" };
+            traderAction = bullishPattern || lowerWick >= latestRange * 0.4 || rsi <= 34
+                ? { type: "FLIP", direction: true, note: "сильный импульс вниз — ловим коррекцию вверх" }
+                : { type: "VETO", note: "сильный импульс вниз — не продаём на дне, ждём коррекцию" };
         }
-        if (!traderAction && resolvedIsBuy && (impulse >= 2.0 || (expansion >= 1.9 && bodyStrength >= 0.5)) && ruleFires("strong_impulse")) {
+        if (!traderAction && resolvedIsBuy && spikeUp && ruleFires("strong_impulse")) {
             traderRules.push("strong_impulse");
-            traderAction = { type: "VETO", note: "сильный импульс вверх — не покупаем на хае, ждём коррекцию" };
+            traderAction = bearishPattern || upperWick >= latestRange * 0.4 || rsi >= 66
+                ? { type: "FLIP", direction: false, note: "сильный импульс вверх — ловим коррекцию вниз" }
+                : { type: "VETO", note: "сильный импульс вверх — не покупаем на хае, ждём коррекцию" };
         }
         const finalIsBuy = traderAction?.type === "FLIP" ? traderAction.direction : resolvedIsBuy;
         const finalPBuy = finalIsBuy ? Math.max(pBuy, pSell) : Math.min(pBuy, pSell);
