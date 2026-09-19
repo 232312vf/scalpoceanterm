@@ -3204,16 +3204,6 @@ ensureDefaultModel();
             dataFreshnessMs: container?._lastMarketMessageAt
                 ? Date.now() - container._lastMarketMessageAt : null
         };
-        const directionWord = finalDirectionIsBuy ? "BUY" : "SELL";
-        const reason = rangeSetup
-            ? (nearSupport && !nearResistance
-                ? `${directionWord} от нижней границы боковика`
-                : nearResistance && !nearSupport
-                    ? `${directionWord} от верхней границы боковика`
-                    : `${directionWord} по перевесу факторов в боковике`)
-            : unsafe
-                ? `${directionWord} • повышенная волатильность`
-                : `TREND continuation ${finalDirectionIsBuy ? "вверх" : "вниз"}`;
         // === Логика повторений: как отрабатывали похожие ситуации раньше ===
         const zoneZone = atSupportZone ? (supportZoneHolds ? "sup-hold" : supportZoneBreaks ? "sup-break" : "sup")
             : atResistanceZone ? (resistanceZoneHolds ? "res-hold" : resistanceZoneBreaks ? "res-break" : "res") : "";
@@ -3264,6 +3254,16 @@ ensureDefaultModel();
         }
 
         const finalDirectionIsBuy = aiFlip ? !finalIsBuy : finalIsBuy;
+        const directionWord = finalDirectionIsBuy ? "BUY" : "SELL";
+        const reason = rangeSetup
+            ? (nearSupport && !nearResistance
+                ? `${directionWord} от нижней границы боковика`
+                : nearResistance && !nearSupport
+                    ? `${directionWord} от верхней границы боковика`
+                    : `${directionWord} по перевесу факторов в боковике`)
+            : unsafe
+                ? `${directionWord} • повышенная волатильность`
+                : `TREND continuation ${finalDirectionIsBuy ? "вверх" : "вниз"}`;
         const directionProbability = finalDirectionIsBuy === finalIsBuy ? finalPBuy : 1 - finalPBuy;
         const adjustedPBuy = vetoedByAi
             ? directionProbability
